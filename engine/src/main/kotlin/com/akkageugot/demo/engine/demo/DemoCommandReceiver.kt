@@ -25,6 +25,9 @@ class DemoCommandReceiver : BroadcastReceiver() {
             "gear" -> handleGear(intent.getStringExtra("value"))
             "speed" -> dispatch(UiAction.SetTargetSpeed(intent.getIntExtra("kmh", 50)))
             "timescale" -> dispatch(UiAction.SetTimeScale(intent.getIntExtra("scale", 1)))
+            "mirror" -> dispatch(UiAction.SetMirrorToRealNavi(intent.getIntExtra("on", 0) == 1))
+            "sdk" -> dispatch(UiAction.SetSdkEnabled(
+                intent.getStringExtra("key") ?: "STT", intent.getIntExtra("on", 1) == 1))
             else -> Log.w(TAG, "알 수 없는 cmd=$cmd")
         }
     }

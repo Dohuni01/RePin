@@ -37,8 +37,11 @@ import com.akkageugot.demo.engine.platform.SpeechInput
 import com.akkageugot.demo.engine.platform.SpeechOutput
 import com.akkageugot.demo.engine.platform.UxRestrictions
 import com.akkageugot.demo.engine.platform.VehicleSignals
+import com.akkageugot.demo.engine.platform.DemoNavigation
+import com.akkageugot.demo.engine.platform.pleos.NaviHelperMirror
 import com.akkageugot.demo.engine.platform.pleos.PleosSpeechInput
 import com.akkageugot.demo.engine.platform.pleos.PleosSpeechOutput
+import com.akkageugot.demo.engine.core.LocalProjection
 import com.akkageugot.demo.engine.sim.SimulatedDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -70,7 +73,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
 
     private lateinit var data: ScenarioData
     private lateinit var drive: SimulatedDrive
-    private lateinit var routePlanner: DemoRoutePlanner
+    private lateinit var navigation: DemoNavigation
+    private var naviMirror: NaviHelperMirror? = null
     private lateinit var vehicle: VehicleSignals
     private lateinit var ux: UxRestrictions
     protected lateinit var speechInput: SpeechInput
@@ -104,7 +108,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             targetSpeedKmh = settings.targetSpeedKmh
             timeScale = settings.timeScale
         }
-        routePlanner = DemoRoutePlanner(data.route.points)
+        navigation = buildNavigation()
         vehicle = MockVehicleSignals(gearProvider = { drive.gear }, speedProvider = { drive.speedKmh })
         ux = MockUxRestrictions(restrictedProvider = { drive.restrictedByMock() })
         speechInput = createSpeechInput()
@@ -135,6 +139,20 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         }
     }
 
+    /** mirrorToRealNavi면 Pleos NaviHelper 미러를 붙인 DemoNavigation, 아니면 순수 DemoNavigation */
+    private fun buildNavigation(): DemoNavigation {
+        val mirror = if (settings.mirrorToRealNavi) {
+            NaviHelperMirror(context, LocalProjection(data.routeLatLon.first())).also {
+                naviMirror = it
+                it.start()
+            }
+        } else {
+            naviMirror = null
+            null
+        }
+        return DemoNavigation(data.route.points, mirror)
+    }
+
     /** settings.useSdk["STT"]가 false가 아니면 Pleos STT(실패 시 자동 목업), 명시적 false면 목업 */
     protected open fun createSpeechInput(): SpeechInput =
         if (settings.useSdk["STT"] == false) MockSpeechInput()
@@ -150,6 +168,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         ux.stop()
         releaseSpeechInput()
         speechOutput.stop()
+        naviMirror?.stop()
         scope.cancel()
         loopContext.close()
     }
@@ -174,6 +193,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             drainActions()
             drive.tick(realDt)
             simClockMs += realDt * drive.timeScale
+            checkWaypointArrival()
 
             if (simClockMs - lastTrailSimMs >= TRAIL_INTERVAL_MS) {
                 lastTrailSimMs = simClockMs
@@ -219,8 +239,12 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                     }
                 }
             }
-            is UiAction.SetMirrorToRealNavi ->
+            is UiAction.SetMirrorToRealNavi -> {
                 settings = settings.copy(mirrorToRealNavi = action.enabled)
+                naviMirror?.stop()
+                navigation = buildNavigation()
+            }
+            is UiAction.NavigateTo -> navigateToSaved(action.savedId)
 
             is UiAction.MicPressed -> {
                 addVoiceLine(Speaker.USER, "…") // 듣는 중 표시
@@ -232,8 +256,18 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             is UiAction.HeadsUpClicked ->
                 apply(dialog.onEvent(DialogEvent.ButtonClicked(action.button, System.currentTimeMillis())))
 
-            else -> Unit // SelectCandidate/UpdateMemo/NavigateTo 는 이후 단계
+            else -> Unit // SelectCandidate/UpdateMemo 는 6단계
         }
+    }
+
+    private fun navigateToSaved(savedId: String) {
+        val place = saved.firstOrNull { it.id == savedId } ?: return
+        val route = navigation.routeToPlace(drive.pos, place.pos, place.label)
+        drive.setRoute(route)
+        drive.startAt(0.0, Gear.D)
+        currentWaypoint = null
+        etaDelayMin = 0
+        Log.i(TAG, "목적지 설정: ${place.label}")
     }
 
     private fun onRecognized(text: String) {
@@ -284,9 +318,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         Log.i(TAG, "저장: [${place.status}] ${place.label} sel=${place.selectedPoiId}")
     }
 
-    /** VISIT 선택 시 경유지 경로 생성 + 안내 (전체 내비 미러링은 5단계) */
+    /** VISIT 선택 시 경유지 경로 생성 + 안내. mirrorToRealNavi면 NaviHelper에도 미러링 */
     private fun addWaypoint(poi: Poi) {
-        val planned = routePlanner.routeWithWaypoint(drive.distanceAlongM, poi)
+        val planned = navigation.addWaypoint(drive.distanceAlongM, poi)
         drive.setRoute(planned.route)
         currentWaypoint = poi
         val cruiseMps = (settings.targetSpeedKmh / 3.6).coerceAtLeast(1.0)
@@ -295,6 +329,17 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         speechOutput.speak(line)
         addVoiceLine(Speaker.APP, line)
         Log.i(TAG, "경유지 추가: ${poi.name}, +${etaDelayMin}분")
+    }
+
+    /** 가게 20m 이내 도착 시 경유지 해제, 원래 경로로 복귀 (engine/PROMPT.md 6절) */
+    private fun checkWaypointArrival() {
+        val wp = currentWaypoint ?: return
+        if (com.akkageugot.demo.engine.core.Geo.distance(drive.pos, wp.pos) <= DemoRoutePlanner.WAYPOINT_ARRIVE_M) {
+            drive.setRoute(navigation.originalRoutePoints)
+            currentWaypoint = null
+            etaDelayMin = 0
+            Log.i(TAG, "경유지 도착: ${wp.name} → 원래 경로 복귀")
+        }
     }
 
     private fun startScenario(n: Int) {
@@ -309,6 +354,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         answerDeadlineMs = null
         lastResult = BacktrackResult.EMPTY
         runningScenario = n
+        navigation.requestDestination("목적지")
         Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m")
     }
 
@@ -326,7 +372,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 turns = drive.turns,
                 pois = data.pois,
                 waypoint = currentWaypoint,
-                destination = data.route.points.lastOrNull() ?: Vec2(0.0, 0.0)
+                destination = navigation.destination
             ),
             drive = DriveState(
                 pos = drive.pos,
@@ -355,6 +401,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 sdkStatus = mapOf(
                     "STT" to speechInput.sourceLabel,
                     "TTS" to speechOutput.sourceLabel,
+                    "NAVI" to navigation.mirrorStatus,
                     "VEHICLE" to vehicle.sourceLabel,
                     "UX" to ux.sourceLabel
                 )
