@@ -25,10 +25,17 @@ import com.akkageugot.demo.engine.core.DialogEffect
 import com.akkageugot.demo.engine.core.DialogEvent
 import com.akkageugot.demo.engine.core.DialogMachine
 import com.akkageugot.demo.engine.core.EngineClock
+import com.akkageugot.demo.engine.core.RevisitWatcher
 import com.akkageugot.demo.engine.core.TrailBuffer
 import com.akkageugot.demo.engine.core.TrailSample
+import com.akkageugot.demo.contract.HeadsUpButton
+import com.akkageugot.demo.contract.HeadsUpKind
+import com.akkageugot.demo.engine.core.CategoryLabels
 import com.akkageugot.demo.engine.data.ScenarioData
 import com.akkageugot.demo.engine.data.ScenarioLoader
+import com.akkageugot.demo.engine.data.ScenarioStepJson
+import com.akkageugot.demo.engine.data.SavedPlaceRepository
+import com.akkageugot.demo.engine.data.SettingsStore
 import com.akkageugot.demo.engine.platform.MockSpeechInput
 import com.akkageugot.demo.engine.platform.MockUxRestrictions
 import com.akkageugot.demo.engine.platform.MockVehicleSignals
@@ -80,6 +87,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     protected lateinit var speechInput: SpeechInput
     protected lateinit var speechOutput: SpeechOutput
     private lateinit var dialog: DialogMachine
+    private lateinit var savedRepo: SavedPlaceRepository
+    private lateinit var settingsStore: SettingsStore
+    private val revisitWatcher = RevisitWatcher()
     private val trail = TrailBuffer()
 
     private var settings = EngineSettings()
@@ -97,13 +107,27 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private var lastResult: BacktrackResult = BacktrackResult.EMPTY
     private var lastIntentJson = "{}"
     private var answerDeadlineMs: Long? = null
+    private var revisitClearDeadlineMs: Long? = null
     private var currentWaypoint: Poi? = null
+    private var revisitPoi: Poi? = null
     private var etaDelayMin = 0
+    private var lastRevisitCheckMs = 0L
+    private val scenarioSteps = mutableListOf<StepRuntime>()
 
     private data class TimedVoiceLine(val line: VoiceLine, val removeAtMs: Long)
 
+    /** 시나리오 자동 발화 한 단계의 진행 상태 */
+    private class StepRuntime(val step: ScenarioStepJson) {
+        var fireAtSimMs: Long? = null // 트리거 지점을 지난 뒤 발화 예정 시각(sim)
+        var fired = false
+    }
+
     override fun start() {
         data = ScenarioLoader.parse(readAsset("scenarios.json"))
+        settingsStore = SettingsStore(context)
+        settings = settingsStore.load()
+        savedRepo = SavedPlaceRepository(context)
+        saved.addAll(savedRepo.load())
         drive = SimulatedDrive(data.route.points).apply {
             targetSpeedKmh = settings.targetSpeedKmh
             timeScale = settings.timeScale
@@ -194,6 +218,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             drive.tick(realDt)
             simClockMs += realDt * drive.timeScale
             checkWaypointArrival()
+            runScenarioSteps()
+            checkRevisit(now)
 
             if (simClockMs - lastTrailSimMs >= TRAIL_INTERVAL_MS) {
                 lastTrailSimMs = simClockMs
@@ -219,14 +245,17 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         when (action) {
             is UiAction.SetTargetSpeed -> {
                 settings = settings.copy(targetSpeedKmh = action.kmh); drive.targetSpeedKmh = action.kmh
+                persistSettings()
             }
             is UiAction.SetTimeScale -> {
                 settings = settings.copy(timeScale = action.scale); drive.timeScale = action.scale
+                persistSettings()
             }
             is UiAction.SetGear -> drive.gear = action.gear
             is UiAction.RunScenario -> startScenario(action.n)
             is UiAction.SetSdkEnabled -> {
                 settings = settings.copy(useSdk = settings.useSdk + (action.key to action.enabled))
+                persistSettings()
                 when (action.key) {
                     "STT" -> {
                         releaseSpeechInput()
@@ -241,10 +270,13 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             }
             is UiAction.SetMirrorToRealNavi -> {
                 settings = settings.copy(mirrorToRealNavi = action.enabled)
+                persistSettings()
                 naviMirror?.stop()
                 navigation = buildNavigation()
             }
             is UiAction.NavigateTo -> navigateToSaved(action.savedId)
+            is UiAction.SelectCandidate -> selectCandidate(action.savedId, action.poiId)
+            is UiAction.UpdateMemo -> updateMemo(action.savedId, action.memo)
 
             is UiAction.MicPressed -> {
                 addVoiceLine(Speaker.USER, "…") // 듣는 중 표시
@@ -253,11 +285,38 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             }
             is UiAction.MicReleased -> speechInput.stop()
             is UiAction.TypedUtterance -> speechInput.feedUtterance(action.text)
-            is UiAction.HeadsUpClicked ->
-                apply(dialog.onEvent(DialogEvent.ButtonClicked(action.button, System.currentTimeMillis())))
+            is UiAction.HeadsUpClicked -> {
+                if (headsUp?.kind == HeadsUpKind.REVISIT) handleRevisitClick(action.button)
+                else apply(dialog.onEvent(DialogEvent.ButtonClicked(action.button, System.currentTimeMillis())))
+            }
 
-            else -> Unit // SelectCandidate/UpdateMemo 는 6단계
+            else -> Unit
         }
+    }
+
+    private fun selectCandidate(savedId: String, poiId: String?) {
+        val i = saved.indexOfFirst { it.id == savedId }
+        if (i < 0) return
+        saved[i] = saved[i].copy(selectedPoiId = poiId)
+        savedRepo.save(saved)
+    }
+
+    private fun updateMemo(savedId: String, memo: String) {
+        val i = saved.indexOfFirst { it.id == savedId }
+        if (i < 0) return
+        saved[i] = saved[i].copy(memo = memo)
+        savedRepo.save(saved)
+    }
+
+    private fun handleRevisitClick(button: HeadsUpButton) {
+        val wp = revisitPoi ?: run { headsUp = null; revisitClearDeadlineMs = null; return }
+        when (button) {
+            HeadsUpButton.VISIT -> addWaypoint(wp)
+            else -> Unit
+        }
+        headsUp = null
+        revisitClearDeadlineMs = null
+        revisitPoi = null
     }
 
     private fun navigateToSaved(savedId: String) {
@@ -302,6 +361,14 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 apply(dialog.onEvent(DialogEvent.AnswerTimeout(simClockMs)))
             }
         }
+        // REVISIT 카드는 6초 무응답이면 조용히 사라진다 (저장은 그대로 유지)
+        revisitClearDeadlineMs?.let { deadline ->
+            if (now >= deadline) {
+                revisitClearDeadlineMs = null
+                if (headsUp?.kind == HeadsUpKind.REVISIT) headsUp = null
+                revisitPoi = null
+            }
+        }
     }
 
     private fun addVoiceLine(speaker: Speaker, text: String) {
@@ -315,8 +382,11 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private fun upsertSaved(place: SavedPlace) {
         val i = saved.indexOfFirst { it.id == place.id }
         if (i >= 0) saved[i] = place else saved += place
+        savedRepo.save(saved)
         Log.i(TAG, "저장: [${place.status}] ${place.label} sel=${place.selectedPoiId}")
     }
+
+    private fun persistSettings() = settingsStore.save(settings)
 
     /** VISIT 선택 시 경유지 경로 생성 + 안내. mirrorToRealNavi면 NaviHelper에도 미러링 */
     private fun addWaypoint(poi: Poi) {
@@ -353,10 +423,77 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         headsUp = null
         answerDeadlineMs = null
         lastResult = BacktrackResult.EMPTY
+        revisitPoi = null
+        revisitClearDeadlineMs = null
+        scenarioSteps.clear()
+        scenario.steps.forEach { scenarioSteps += StepRuntime(it) }
         runningScenario = n
         navigation.requestDestination("목적지")
-        Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m")
+        Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m, steps=${scenario.steps.size}")
     }
+
+    /** 시나리오 자동 발화: 트리거 지점을 지나면 delaySec(sim) 뒤 프리셋 발화를 넣는다 */
+    private fun runScenarioSteps() {
+        if (scenarioSteps.isEmpty()) return
+        scenarioSteps.forEach { rt ->
+            if (rt.fired) return@forEach
+            if (rt.fireAtSimMs == null && drive.distanceAlongM >= rt.step.triggerDistanceAlongRouteM) {
+                rt.fireAtSimMs = simClockMs + (rt.step.delaySec * 1000).toLong()
+            }
+            val fireAt = rt.fireAtSimMs
+            if (fireAt != null && simClockMs >= fireAt) {
+                rt.fired = true
+                firePreset(rt.step.preset)
+            }
+        }
+    }
+
+    /** adb say와 동일 경로로 프리셋 발화 자동 입력 */
+    private fun firePreset(preset: Int) {
+        val text = com.akkageugot.demo.engine.demo.DemoCommandReceiver.PRESETS.getOrNull(preset - 1) ?: return
+        Log.i(TAG, "시나리오 자동 발화 preset $preset: $text")
+        addVoiceLine(Speaker.USER, "…")
+        apply(dialog.onEvent(DialogEvent.UtteranceStarted(simClockMs)))
+        speechInput.start()
+        speechInput.feedUtterance(text)
+        speechInput.stop()
+    }
+
+    /** CONFIRMED 저장 장소가 300m 앞·경로 60m 이내면 REVISIT 안내 (engine/PROMPT.md 6절) */
+    private fun checkRevisit(nowReal: Long) {
+        if (nowReal - lastRevisitCheckMs < 1000) return
+        lastRevisitCheckMs = nowReal
+        if (headsUp != null || drive.gear != Gear.D) return
+        val hit = revisitWatcher.check(saved, drive.route, drive.distanceAlongM, System.currentTimeMillis()) ?: return
+
+        val poi = resolvePoi(hit.place) ?: return
+        val side = hit.place.candidates.firstOrNull { it.poi.id == poi.id }?.side
+        val sideWord = side?.let { CategoryLabels.korean(it) } ?: ""
+        val subtitle = listOf(CategoryLabels.korean(poi.category), sideWord, "${hit.aheadM.toInt()}m 앞")
+            .filter { it.isNotEmpty() }.joinToString(" · ")
+        revisitPoi = poi
+        headsUp = HeadsUp(
+            id = "hu-${idSeq++}",
+            kind = HeadsUpKind.REVISIT,
+            title = poi.name,
+            subtitle = subtitle,
+            category = poi.category,
+            buttons = listOf(HeadsUpButton.VISIT, HeadsUpButton.DISMISS)
+        )
+        revisitClearDeadlineMs = nowReal + ANSWER_TIMEOUT_MS
+        val line = "지난번 저장한 ${poi.name}가 ${hit.aheadM.toInt()}m 앞 ${sideWord}이에요. 들를까요?"
+        speechOutput.speak(line)
+        addVoiceLine(Speaker.APP, line)
+        Log.i(TAG, "REVISIT: ${poi.name} ${hit.aheadM.toInt()}m 앞")
+    }
+
+    private fun resolvePoi(place: SavedPlace): Poi? =
+        place.selectedPoiId?.let { id -> data.pois.firstOrNull { it.id == id } }
+            ?: data.pois.minByOrNull {
+                com.akkageugot.demo.engine.core.Geo.distance(it.pos, place.pos)
+            }?.takeIf {
+                com.akkageugot.demo.engine.core.Geo.distance(it.pos, place.pos) < 30.0
+            }
 
     private fun publish() {
         _state.value = buildState()
