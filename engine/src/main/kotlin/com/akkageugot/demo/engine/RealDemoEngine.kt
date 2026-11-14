@@ -37,6 +37,8 @@ import com.akkageugot.demo.engine.platform.SpeechInput
 import com.akkageugot.demo.engine.platform.SpeechOutput
 import com.akkageugot.demo.engine.platform.UxRestrictions
 import com.akkageugot.demo.engine.platform.VehicleSignals
+import com.akkageugot.demo.engine.platform.pleos.PleosSpeechInput
+import com.akkageugot.demo.engine.platform.pleos.PleosSpeechOutput
 import com.akkageugot.demo.engine.sim.SimulatedDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -133,19 +135,28 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         }
     }
 
-    /** 4단계에서 Pleos STT로 교체. 기본은 목업 */
-    protected open fun createSpeechInput(): SpeechInput = MockSpeechInput()
+    /** settings.useSdk["STT"]가 false가 아니면 Pleos STT(실패 시 자동 목업), 명시적 false면 목업 */
+    protected open fun createSpeechInput(): SpeechInput =
+        if (settings.useSdk["STT"] == false) MockSpeechInput()
+        else PleosSpeechInput(context).also { it.initialize() }
 
-    /** 4단계에서 Pleos TTS로 교체. 기본은 Android TTS 목업 */
-    protected open fun createSpeechOutput(): SpeechOutput = AndroidSpeechOutput(context)
+    /** settings.useSdk["TTS"]가 false가 아니면 Pleos TTS(실패 시 Android TTS), 명시적 false면 Android TTS */
+    protected open fun createSpeechOutput(): SpeechOutput =
+        if (settings.useSdk["TTS"] == false) AndroidSpeechOutput(context)
+        else PleosSpeechOutput(context)
 
     override fun stop() {
         vehicle.stop()
         ux.stop()
-        speechInput.stop()
+        releaseSpeechInput()
         speechOutput.stop()
         scope.cancel()
         loopContext.close()
+    }
+
+    private fun releaseSpeechInput() {
+        speechInput.stop()
+        (speechInput as? PleosSpeechInput)?.release()
     }
 
     override fun dispatch(action: UiAction) {
@@ -194,8 +205,20 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             }
             is UiAction.SetGear -> drive.gear = action.gear
             is UiAction.RunScenario -> startScenario(action.n)
-            is UiAction.SetSdkEnabled ->
+            is UiAction.SetSdkEnabled -> {
                 settings = settings.copy(useSdk = settings.useSdk + (action.key to action.enabled))
+                when (action.key) {
+                    "STT" -> {
+                        releaseSpeechInput()
+                        speechInput = createSpeechInput()
+                        speechInput.setOnResult { text -> onRecognized(text) }
+                    }
+                    "TTS" -> {
+                        speechOutput.stop()
+                        speechOutput = createSpeechOutput().also { it.start() }
+                    }
+                }
+            }
             is UiAction.SetMirrorToRealNavi ->
                 settings = settings.copy(mirrorToRealNavi = action.enabled)
 

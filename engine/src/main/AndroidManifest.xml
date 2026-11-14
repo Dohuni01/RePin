@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
+    <!-- 음성 입력(STT) 마이크 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Pleos Gleo AI 음성 서비스. 이 데모가 실제로 호출하는 권한만 선언 (docs/PLEOS_SDK_NOTES.md) -->
+    <uses-permission android:name="pleos.car.permission.STT_SERVICE" />
+    <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
+
     <application>
         <service
             android:name="com.akkageugot.demo.engine.service.AkkaService"
