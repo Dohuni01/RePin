@@ -3,39 +3,32 @@ package com.akkageugot.demo.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.remember
 import com.akkageugot.demo.contract.EngineProvider
+import com.akkageugot.demo.ui.common.AkkaTheme
+import com.akkageugot.demo.ui.dev.UiPrefs
 
 /**
- * 0단계 임시 화면: AppState를 텍스트로 찍는다. 이후 구현은 B 담당.
+ * 데모 화면 Activity (landscape, distractionOptimized — AndroidManifest 참고).
+ * EngineProvider.engine.state를 그리고 dispatch(UiAction)만 보낸다.
+ * 엔진 start/stop은 :app의 Application이 맡는다.
  */
 class DemoActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val prefs = UiPrefs(applicationContext)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    val state by EngineProvider.engine.state.collectAsStateWithLifecycle()
-                    Text(
-                        text = state.toString(),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp)
-                    )
-                }
+            val engine = remember { EngineProvider.engine }
+            val state by engine.state.collectAsState()
+            AkkaTheme(day = prefs.flags.dayTheme) {
+                DemoScreen(
+                    state = state,
+                    flags = prefs.flags,
+                    onFlags = prefs::update,
+                    dispatch = engine::dispatch
+                )
             }
         }
     }
