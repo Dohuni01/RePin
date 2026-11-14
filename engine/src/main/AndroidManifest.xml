@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <application>
+        <service
+            android:name="com.akkageugot.demo.engine.service.AkkaService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="driving demo engine" />
+        </service>
+
+        <receiver
+            android:name="com.akkageugot.demo.engine.demo.DemoCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.akkageugot.demo.DEMO" />
+            </intent-filter>
+        </receiver>
+
+        <activity
+            android:name="com.akkageugot.demo.engine.probe.EngineProbeActivity"
+            android:exported="true"
+            android:label="엔진 테스트"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
+    </application>
+</manifest>
