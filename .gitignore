@@ -1,0 +1,21 @@
+# Android / Gradle
+*.iml
+.gradle/
+/local.properties
+/.idea/
+/captures
+.externalNativeBuild/
+.cxx/
+build/
+**/build/
+
+# 빌드 결과물, 서명 키
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

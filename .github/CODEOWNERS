@@ -1,0 +1,6 @@
+# A_GITHUB_ID, B_GITHUB_ID를 실제 GitHub 아이디로 바꾸세요 (앞의 @는 유지).
+# 모든 PR에 상대방이 리뷰어로 자동 지정됩니다. (작성자 본인은 자동으로 빠짐)
+# 폴더 소유 규칙은 루트 CLAUDE.md에 있습니다.
+
+*            @Dohuni01 @B_GITHUB_ID
+/contract/   @Dohuni01 @B_GITHUB_ID
