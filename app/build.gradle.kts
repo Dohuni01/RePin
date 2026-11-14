@@ -26,6 +26,7 @@ android {
         }
         create("real") {
             dimension = "engine"
+            isDefault = true // Android Studio 기본 Build Variant = realDebug
             buildConfigField("boolean", "USE_FAKE_ENGINE", "false")
         }
     }

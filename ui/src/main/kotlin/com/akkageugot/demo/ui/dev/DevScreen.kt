@@ -138,7 +138,7 @@ fun DevScreen(
             ToggleRow(
                 title = key,
                 badge = state.debug.sdkStatus[key],
-                checked = s.useSdk[key] == true,
+                checked = s.useSdk[key] != false, // 진짜 엔진은 키가 없으면 SDK 사용(실패 시 목업)
                 onChange = { dispatch(UiAction.SetSdkEnabled(key, it)) }
             )
         }

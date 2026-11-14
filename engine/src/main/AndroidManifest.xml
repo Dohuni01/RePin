@@ -29,19 +29,6 @@
                 <action android:name="com.akkageugot.demo.DEMO" />
             </intent-filter>
         </receiver>
-
-        <activity
-            android:name="com.akkageugot.demo.engine.probe.EngineProbeActivity"
-            android:exported="true"
-            android:label="엔진 테스트"
-            android:screenOrientation="landscape">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <meta-data
-                android:name="distractionOptimized"
-                android:value="true" />
-        </activity>
+        <!-- EngineProbeActivity(엔진 테스트) 런처는 debug 빌드에서만: src/debug/AndroidManifest.xml -->
     </application>
 </manifest>

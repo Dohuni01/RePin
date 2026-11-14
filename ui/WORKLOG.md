@@ -2,6 +2,9 @@
 
 최신 항목이 위에 온다. 이 앱은 실제 API를 연결하지 않는 데모 버전이며 FakeDemoEngine 기준으로 동작한다.
 
+## 2026-11-14 — 합치기(chore/integration)
+- `dev/DevScreen.kt`: SDK 스위치를 `useSdk[key] != false`로 표시 (진짜 엔진은 키가 없으면 SDK 사용). 나머지 엔진 쪽 수정은 루트 `MERGE_NOTES.md` 참고.
+
 ## 2026-11-14 — 실행용 프로젝트 Desktop\ui_run 생성
 - A의 0단계 뼈대 없이 돌려 보려고 `Desktop\ui_run` 을 만들었다 (contract + ui + 최소 app, 가짜 엔진만).
 - 이 폴더의 .kt 파일을 복사해 넣었으므로, 여기서 고치면 ui_run 쪽에도 같이 반영해야 한다.

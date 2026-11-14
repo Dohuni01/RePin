@@ -3,6 +3,8 @@ package com.akkageugot.demo.engine
 import android.content.Context
 import android.util.Log
 import com.akkageugot.demo.contract.AppState
+import com.akkageugot.demo.contract.Category
+import com.akkageugot.demo.contract.SavedStatus
 import com.akkageugot.demo.contract.DebugInfo
 import com.akkageugot.demo.contract.DemoEngine
 import com.akkageugot.demo.contract.DriveState
@@ -110,6 +112,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private var revisitClearDeadlineMs: Long? = null
     private var currentWaypoint: Poi? = null
     private var revisitPoi: Poi? = null
+    // 위치만 저장 카드(category == null): 대화 머신 밖에서 [저장]/[들르기]와 6초 타이머를 처리한다
+    private var locationOnlyPlace: SavedPlace? = null
+    private var locationOnlyClearDeadlineMs: Long? = null
     private var etaDelayMin = 0
     private var lastRevisitCheckMs = 0L
     private val scenarioSteps = mutableListOf<StepRuntime>()
@@ -287,6 +292,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             is UiAction.TypedUtterance -> speechInput.feedUtterance(action.text)
             is UiAction.HeadsUpClicked -> {
                 if (headsUp?.kind == HeadsUpKind.REVISIT) handleRevisitClick(action.button)
+                else if (headsUp != null && headsUp?.category == null && locationOnlyPlace != null) handleLocationOnlyClick(action.button)
                 else apply(dialog.onEvent(DialogEvent.ButtonClicked(action.button, System.currentTimeMillis())))
             }
 
@@ -297,7 +303,11 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private fun selectCandidate(savedId: String, poiId: String?) {
         val i = saved.indexOfFirst { it.id == savedId }
         if (i < 0) return
-        saved[i] = saved[i].copy(selectedPoiId = poiId)
+        // 정차 화면에서 고르면 상태 배지도 같이 바뀐다 (null = "이 근처였어요 (위치만)")
+        saved[i] = saved[i].copy(
+            selectedPoiId = poiId,
+            status = if (poiId != null) SavedStatus.CONFIRMED else SavedStatus.LOCATION_ONLY
+        )
         savedRepo.save(saved)
     }
 
@@ -306,6 +316,30 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         if (i < 0) return
         saved[i] = saved[i].copy(memo = memo)
         savedRepo.save(saved)
+    }
+
+    /** 위치만 저장 카드: [저장]은 이미 저장돼 있어 안내만, [들르기]는 저장한 위치를 경유지로 */
+    private fun handleLocationOnlyClick(button: HeadsUpButton) {
+        val place = locationOnlyPlace
+        clearLocationOnlyCard()
+        if (place == null) return
+        when (button) {
+            HeadsUpButton.SAVE -> {
+                val line = "위치를 저장해 뒀어요. 정차하면 같이 확인해요."
+                speechOutput.speak(line)
+                addVoiceLine(Speaker.APP, line)
+            }
+            HeadsUpButton.VISIT -> addWaypoint(
+                Poi(id = "loc-${place.id}", name = "저장한 위치", category = Category.ETC, pos = place.pos, open = true)
+            )
+            HeadsUpButton.DISMISS -> Unit
+        }
+    }
+
+    private fun clearLocationOnlyCard() {
+        if (headsUp?.category == null && headsUp?.kind == HeadsUpKind.ANSWER) headsUp = null
+        locationOnlyPlace = null
+        locationOnlyClearDeadlineMs = null
     }
 
     private fun handleRevisitClick(button: HeadsUpButton) {
@@ -342,9 +376,21 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             when (e) {
                 is DialogEffect.SetPhase -> voicePhase = e.phase
                 is DialogEffect.Speak -> { speechOutput.speak(e.text); addVoiceLine(Speaker.APP, e.text) }
-                is DialogEffect.ShowHeadsUp -> headsUp = e.headsUp
+                is DialogEffect.ShowHeadsUp -> {
+                    headsUp = e.headsUp
+                    if (e.headsUp.category == null && e.headsUp.kind == HeadsUpKind.ANSWER) {
+                        // 위치만 저장 카드는 대화 머신의 답변 타이머가 없으므로 여기서 6초 뒤 지운다
+                        locationOnlyClearDeadlineMs = now + ANSWER_TIMEOUT_MS
+                    } else {
+                        locationOnlyPlace = null
+                        locationOnlyClearDeadlineMs = null
+                    }
+                }
                 is DialogEffect.ClearHeadsUp -> headsUp = null
-                is DialogEffect.Save -> upsertSaved(e.place)
+                is DialogEffect.Save -> {
+                    upsertSaved(e.place)
+                    if (e.place.status == SavedStatus.LOCATION_ONLY) locationOnlyPlace = e.place
+                }
                 is DialogEffect.AddWaypoint -> addWaypoint(e.poi)
                 is DialogEffect.StartAnswerTimer -> answerDeadlineMs = now + ANSWER_TIMEOUT_MS
                 is DialogEffect.CancelAnswerTimer -> answerDeadlineMs = null
@@ -360,6 +406,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 answerDeadlineMs = null
                 apply(dialog.onEvent(DialogEvent.AnswerTimeout(simClockMs)))
             }
+        }
+        locationOnlyClearDeadlineMs?.let { deadline ->
+            if (now >= deadline) clearLocationOnlyCard()
         }
         // REVISIT 카드는 6초 무응답이면 조용히 사라진다 (저장은 그대로 유지)
         revisitClearDeadlineMs?.let { deadline ->
@@ -425,6 +474,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         lastResult = BacktrackResult.EMPTY
         revisitPoi = null
         revisitClearDeadlineMs = null
+        locationOnlyPlace = null
+        locationOnlyClearDeadlineMs = null
         scenarioSteps.clear()
         scenario.steps.forEach { scenarioSteps += StepRuntime(it) }
         runningScenario = n
@@ -509,7 +560,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 turns = drive.turns,
                 pois = data.pois,
                 waypoint = currentWaypoint,
-                destination = navigation.destination
+                // NavigateTo로 경로가 바뀌면 그 끝이 목적지다 (경유지 경로도 끝은 원래 목적지)
+                destination = drive.route.points.lastOrNull() ?: navigation.destination
             ),
             drive = DriveState(
                 pos = drive.pos,
