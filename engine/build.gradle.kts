@@ -35,4 +35,5 @@ dependencies {
     implementation(libs.pleos.vehicle)
 
     testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="akka-geugot" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>akka-geugot demo route</name><trkseg>
+    <trkpt lat="37.544" lon="127.056"></trkpt>
+    <trkpt lat="37.544" lon="127.05713424"></trkpt>
+    <trkpt lat="37.544" lon="127.05826848"></trkpt>
+    <trkpt lat="37.544" lon="127.05940272"></trkpt>
+    <trkpt lat="37.544" lon="127.06053696"></trkpt>
+    <trkpt lat="37.544" lon="127.06167119"></trkpt>
+    <trkpt lat="37.544" lon="127.06280543"></trkpt>
+    <trkpt lat="37.544" lon="127.06393967"></trkpt>
+    <trkpt lat="37.544" lon="127.06507391"></trkpt>
+    <trkpt lat="37.544" lon="127.06620815"></trkpt>
+    <trkpt lat="37.544" lon="127.06734239"></trkpt>
+    <trkpt lat="37.544" lon="127.06847663"></trkpt>
+    <trkpt lat="37.544" lon="127.06961087"></trkpt>
+    <trkpt lat="37.54310068" lon="127.06961087"></trkpt>
+    <trkpt lat="37.54220136" lon="127.06961087"></trkpt>
+    <trkpt lat="37.54130204" lon="127.06961087"></trkpt>
+    <trkpt lat="37.54040271" lon="127.06961087"></trkpt>
+    <trkpt lat="37.53950339" lon="127.06961087"></trkpt>
+    <trkpt lat="37.53860407" lon="127.06961087"></trkpt>
+    <trkpt lat="37.53770475" lon="127.06961087"></trkpt>
+    <trkpt lat="37.53680543" lon="127.06961087"></trkpt>
+    <trkpt lat="37.53680543" lon="127.0707451"></trkpt>
+    <trkpt lat="37.53680543" lon="127.07187934"></trkpt>
+    <trkpt lat="37.53680543" lon="127.07301358"></trkpt>
+    <trkpt lat="37.53680543" lon="127.07414782"></trkpt>
+    <trkpt lat="37.53680543" lon="127.07528206"></trkpt>
+    <trkpt lat="37.53680543" lon="127.0764163"></trkpt>
+    <trkpt lat="37.53680543" lon="127.07755054"></trkpt>
+    <trkpt lat="37.53680543" lon="127.07868478"></trkpt>
+    <trkpt lat="37.53680543" lon="127.07981901"></trkpt>
+    <trkpt lat="37.53680543" lon="127.08095325"></trkpt>
+  </trkseg></trk>
+</gpx>
