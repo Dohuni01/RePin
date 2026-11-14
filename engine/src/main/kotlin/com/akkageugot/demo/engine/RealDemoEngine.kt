@@ -12,6 +12,7 @@ import com.akkageugot.demo.contract.HeadsUp
 import com.akkageugot.demo.contract.MapData
 import com.akkageugot.demo.contract.Poi
 import com.akkageugot.demo.contract.SavedPlace
+import com.akkageugot.demo.contract.SavedStatus
 import com.akkageugot.demo.contract.Speaker
 import com.akkageugot.demo.contract.UiAction
 import com.akkageugot.demo.contract.Vec2
@@ -110,6 +111,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private var revisitClearDeadlineMs: Long? = null
     private var currentWaypoint: Poi? = null
     private var revisitPoi: Poi? = null
+    private var revisitPlace: SavedPlace? = null
     private var etaDelayMin = 0
     private var lastRevisitCheckMs = 0L
     private val scenarioSteps = mutableListOf<StepRuntime>()
@@ -309,14 +311,14 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     }
 
     private fun handleRevisitClick(button: HeadsUpButton) {
-        val wp = revisitPoi ?: run { headsUp = null; revisitClearDeadlineMs = null; return }
-        when (button) {
-            HeadsUpButton.VISIT -> addWaypoint(wp)
-            else -> Unit
-        }
+        val wp = revisitPoi
+        // 눌렀으면(들르기든 닫기든) 그 장소는 오늘 다시 알리지 않는다 (재출현 버그 수정)
+        revisitPlace?.let { revisitWatcher.markHandled(it, System.currentTimeMillis()) }
+        if (wp != null && button == HeadsUpButton.VISIT) addWaypoint(wp)
         headsUp = null
         revisitClearDeadlineMs = null
         revisitPoi = null
+        revisitPlace = null
     }
 
     private fun navigateToSaved(savedId: String) {
@@ -380,7 +382,11 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     }
 
     private fun upsertSaved(place: SavedPlace) {
-        val i = saved.indexOfFirst { it.id == place.id }
+        // 같은 가게(selectedPoiId)를 CONFIRMED로 다시 저장하면 새 항목을 쌓지 않고 기존 걸 갱신한다
+        val dupIndex = if (place.status == SavedStatus.CONFIRMED && place.selectedPoiId != null) {
+            saved.indexOfFirst { it.status == SavedStatus.CONFIRMED && it.selectedPoiId == place.selectedPoiId }
+        } else -1
+        val i = if (dupIndex >= 0) dupIndex else saved.indexOfFirst { it.id == place.id }
         if (i >= 0) saved[i] = place else saved += place
         savedRepo.save(saved)
         Log.i(TAG, "저장: [${place.status}] ${place.label} sel=${place.selectedPoiId}")
@@ -416,6 +422,10 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         val scenario = data.scenarios.firstOrNull { it.n == n } ?: return
         drive.setRoute(data.route.points)
         drive.startAt(scenario.startDistanceAlongRouteM, Gear.D)
+        if (scenario.timeScale > 0) {
+            drive.timeScale = scenario.timeScale
+            settings = settings.copy(timeScale = scenario.timeScale) // 화면 표시용(저장은 안 함)
+        }
         trail.clear()
         lastTrailSimMs = simClockMs - TRAIL_INTERVAL_MS
         currentWaypoint = null
@@ -472,6 +482,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         val subtitle = listOf(CategoryLabels.korean(poi.category), sideWord, "${hit.aheadM.toInt()}m 앞")
             .filter { it.isNotEmpty() }.joinToString(" · ")
         revisitPoi = poi
+        revisitPlace = hit.place
         headsUp = HeadsUp(
             id = "hu-${idSeq++}",
             kind = HeadsUpKind.REVISIT,

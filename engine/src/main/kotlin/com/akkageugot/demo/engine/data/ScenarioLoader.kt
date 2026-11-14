@@ -41,6 +41,8 @@ data class ScenarioStepJson(
 data class ScenarioJson(
     val n: Int,
     val startDistanceAlongRouteM: Double,
+    /** 발표용 배속. 긴 구간을 지나 "3분 전"을 되짚는 시나리오는 더 빠르게 재생한다 */
+    val timeScale: Int = 1,
     val steps: List<ScenarioStepJson> = emptyList()
 )
 

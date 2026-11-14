@@ -9,6 +9,11 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.akkageugot.demo.contract.Category
+import com.akkageugot.demo.ui.navi.DayMapPalette
+import com.akkageugot.demo.ui.navi.MapPalette
+import com.akkageugot.demo.ui.navi.NightMapPalette
+import com.akkageugot.demo.ui.navi.mapIconColor
+import com.akkageugot.demo.ui.navi.toMapIcon
 
 /** 화면 전체에서 쓰는 색. 기본은 야간, 주간은 설정에서 토글 */
 @Immutable
@@ -30,14 +35,16 @@ data class AkkaColors(
     val userBubble: Color,
     val ok: Color,
     val warn: Color,
-    val danger: Color
+    val danger: Color,
+    /** 데모 내비 지도 색 (MapScene.kt) */
+    val map: MapPalette
 )
 
 val NightColors = AkkaColors(
     isDay = false,
-    mapBg = Color(0xFF0E1218),
-    mapBlock = Color(0xFF1A212B),
-    mapRoad = Color(0xFF2C3644),
+    mapBg = Color(NightMapPalette.ground),
+    mapBlock = Color(NightMapPalette.building),
+    mapRoad = Color(NightMapPalette.road),
     route = Color(0xFF3D8BFF),
     routePassed = Color(0xFF5B6675),
     car = Color(0xFFFFFFFF),
@@ -51,16 +58,17 @@ val NightColors = AkkaColors(
     userBubble = Color(0xFF39424F),
     ok = Color(0xFF52D689),
     warn = Color(0xFFFFB84D),
-    danger = Color(0xFFFF6B6B)
+    danger = Color(0xFFFF6B6B),
+    map = NightMapPalette
 )
 
 val DayColors = AkkaColors(
     isDay = true,
-    mapBg = Color(0xFFE9EDF2),
-    mapBlock = Color(0xFFD6DCE4),
-    mapRoad = Color(0xFFFFFFFF),
-    route = Color(0xFF1668E3),
-    routePassed = Color(0xFF98A2B0),
+    mapBg = Color(DayMapPalette.ground),
+    mapBlock = Color(DayMapPalette.building2),
+    mapRoad = Color(DayMapPalette.road),
+    route = Color(DayMapPalette.route),
+    routePassed = Color(DayMapPalette.routePassed),
     car = Color(0xFF10151C),
     surface = Color(0xF7FFFFFF),
     surfaceHigh = Color(0xFFF0F3F7),
@@ -72,7 +80,8 @@ val DayColors = AkkaColors(
     userBubble = Color(0xFFDDE2E9),
     ok = Color(0xFF12894A),
     warn = Color(0xFFB36A00),
-    danger = Color(0xFFC62828)
+    danger = Color(0xFFC62828),
+    map = DayMapPalette
 )
 
 val LocalAkkaColors = staticCompositionLocalOf { NightColors }
@@ -111,13 +120,5 @@ fun Category.labelKo(): String = when (this) {
     Category.ETC -> "기타"
 }
 
-/** 업종별 색 (지도 아이콘 배지, 창밖 간판). 야간/주간 공통으로 흰 아이콘이 잘 보이는 색 */
-fun Category?.badgeColor(): Color = when (this) {
-    Category.BAKERY -> Color(0xFFC77A1E)
-    Category.CAFE -> Color(0xFF8A5A3C)
-    Category.RESTAURANT -> Color(0xFFC0473F)
-    Category.FLOWER -> Color(0xFFB8478F)
-    Category.CONVENIENCE -> Color(0xFF2E8B63)
-    Category.ETC -> Color(0xFF5E6B7C)
-    null -> Color(0xFF4A6FD6)
-}
+/** 업종별 색 (지도 아이콘 배지, 카드, 창밖 간판). 지도와 같은 색을 쓰도록 MapScene.kt의 mapIconColor를 따른다 */
+fun Category?.badgeColor(): Color = Color(mapIconColor(this.toMapIcon()))

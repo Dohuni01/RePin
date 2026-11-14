@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.akkageugot.demo.contract.Category
+import com.akkageugot.demo.ui.navi.MapIcon
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -20,6 +21,7 @@ import kotlin.math.sin
 /** 사진 대신 쓰는 단순 아이콘. 외부 아이콘 라이브러리 없이 Canvas로 직접 그린다 (24 격자 기준) */
 enum class IconKind {
     BAKERY, CAFE, RESTAURANT, FLOWER, CONVENIENCE, ETC, PIN,
+    PARKING, FUEL, PHARMACY, BANK,
     MIC, GEAR, LIST, TURN_LEFT, TURN_RIGHT, STRAIGHT, FLAG, BACK, CHECK, PHONE
 }
 
@@ -31,6 +33,21 @@ fun Category?.iconKind(): IconKind = when (this) {
     Category.CONVENIENCE -> IconKind.CONVENIENCE
     Category.ETC -> IconKind.ETC
     null -> IconKind.PIN
+}
+
+/** 지도 아이콘(MapScene) → 그리기용 아이콘 */
+fun MapIcon.iconKind(): IconKind = when (this) {
+    MapIcon.BAKERY -> IconKind.BAKERY
+    MapIcon.CAFE -> IconKind.CAFE
+    MapIcon.RESTAURANT -> IconKind.RESTAURANT
+    MapIcon.FLOWER -> IconKind.FLOWER
+    MapIcon.CONVENIENCE -> IconKind.CONVENIENCE
+    MapIcon.ETC -> IconKind.ETC
+    MapIcon.PARKING -> IconKind.PARKING
+    MapIcon.FUEL -> IconKind.FUEL
+    MapIcon.PHARMACY -> IconKind.PHARMACY
+    MapIcon.BANK -> IconKind.BANK
+    MapIcon.PIN -> IconKind.PIN
 }
 
 @Composable
@@ -96,6 +113,24 @@ fun DrawScope.drawIcon(kind: IconKind, center: Offset, sizePx: Float, color: Col
         IconKind.ETC -> {
             drawCircle(color, 7f * u, p(12f, 12f), style = stroke)
             drawCircle(color, 2f * u, p(12f, 12f))
+        }
+        IconKind.PARKING -> {
+            line(9f, 4.5f, 9f, 19.5f)
+            line(9f, 4.5f, 13f, 4.5f); line(9f, 13.5f, 13f, 13.5f)
+            drawArc(color, -90f, 180f, false, p(8.5f, 4.5f), Size(9f * u, 9f * u), style = stroke)
+        }
+        IconKind.FUEL -> {
+            rrect(5f, 4f, 14f, 20f, 1.5f)
+            line(7.5f, 8f, 11.5f, 8f)
+            poly(14f, 10f, 17.5f, 10f, 17.5f, 18f)
+        }
+        IconKind.PHARMACY -> {
+            poly(10f, 4f, 14f, 4f, 14f, 10f, 20f, 10f, 20f, 14f, 14f, 14f, 14f, 20f, 10f, 20f, 10f, 14f, 4f, 14f, 4f, 10f, 10f, 10f, fill = true)
+        }
+        IconKind.BANK -> {
+            poly(4f, 10f, 12f, 5f, 20f, 10f)
+            line(6.5f, 11f, 6.5f, 17f); line(10.5f, 11f, 10.5f, 17f); line(13.5f, 11f, 13.5f, 17f); line(17.5f, 11f, 17.5f, 17f)
+            line(4f, 19f, 20f, 19f)
         }
         IconKind.PIN -> {
             drawArc(color, 150f, 240f, false, p(6f, 3f), Size(12f * u, 12f * u), style = stroke)

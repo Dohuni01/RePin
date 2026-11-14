@@ -8,10 +8,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -19,25 +19,21 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.akkageugot.demo.contract.AppState
-import com.akkageugot.demo.contract.Vec2
+import com.akkageugot.demo.contract.HeadsUpKind
 import com.akkageugot.demo.ui.common.IconKind
 import com.akkageugot.demo.ui.common.LocalAkkaColors
-import com.akkageugot.demo.ui.common.badgeColor
 import com.akkageugot.demo.ui.common.drawIcon
 import com.akkageugot.demo.ui.common.iconKind
 import com.akkageugot.demo.ui.geo.RouteGeo
-import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.sin
-
-/** 한 화면 세로에 보이는 실제 거리(m). 차는 세로 70% 지점이라 앞쪽이 약 220m 보인다 */
-private const val VISIBLE_HEIGHT_M = 320f
 
 /**
- * 데모 내비 지도. 지도 타일 없이 로컬 미터 좌표를 Canvas에 직접 그린다.
- * heading-up: 진행 방향이 항상 화면 위쪽. 차 아이콘은 가로 중앙, 세로 70% 고정.
+ * 데모 내비 지도. 실제 내비처럼 기울어진 3D 시점으로 그린다 (지도 타일 없음).
+ * - 차 아이콘은 가로 중앙, 세로 72% 고정. 진행 방향이 화면 위쪽
+ * - 도로(큰길/골목), 솟은 건물, 공원, 하천, 가게 아이콘과 이름
+ * - 카드에 뜬 가게는 지도에서 강조하고, 이미 지나쳐 화면 밖이면 아래쪽에 "○m 뒤"로 붙인다
+ * 계산은 MapScene.kt(buildMapScene)가 하고, 여기서는 그 결과를 순서대로 그리기만 한다.
  *
- * @param showNames 발표자 모드: 가게 이름 표시
+ * @param showNames 발표자 모드: 보이는 가게 이름을 전부 표시 (평소엔 가까운 가게만)
  * @param showDebug 디버그 오버레이: trail, t0, corridor, 후보 순위
  */
 @Composable
@@ -48,206 +44,126 @@ fun DemoNaviView(
     showDebug: Boolean = false
 ) {
     val colors = LocalAkkaColors.current
+    val pal = colors.map
     val map = state.map
     val drive = state.drive
-    val decor = remember(map.originalRoute) { buildDecor(map.originalRoute) }
+    // 도시 장식은 경로가 바뀔 때만 다시 만든다 (시드 고정)
+    val decor = remember(map.originalRoute, map.pois) { buildMapDecor(map.originalRoute, map.pois.map { it.pos }) }
     val routeGeo = remember(map.route) { RouteGeo(map.route) }
-    val labelPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD } }
+    val labelPaint = remember {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.CENTER
+        }
+    }
+    val headsUp = state.headsUp
+    val highlight: Set<String> =
+        if (headsUp != null && headsUp.kind == HeadsUpKind.ANSWER) {
+            map.pois.filter { it.name == headsUp.title }.map { it.id }.toSet()
+        } else {
+            emptySet()
+        }
 
     Canvas(modifier.clipToBounds()) {
-        val pxPerM = size.height / VISIBLE_HEIGHT_M
-        val cx = size.width / 2f
-        val cy = size.height * 0.7f
-        // 진행 방향 f, 그 오른쪽 r (계약 좌표: y 북쪽 +). 화면은 y 아래 + 이므로 앞쪽 성분을 빼 준다
-        val fx = cos(drive.headingRad)
-        val fy = sin(drive.headingRad)
-        fun toScreen(v: Vec2): Offset {
-            val dx = v.x - drive.pos.x
-            val dy = v.y - drive.pos.y
-            val right = dx * fy - dy * fx
-            val forward = dx * fx + dy * fy
-            return Offset(cx + (right * pxPerM).toFloat(), cy - (forward * pxPerM).toFloat())
-        }
-        val viewRadiusM = hypot(size.width, size.height) / pxPerM
-        fun near(v: Vec2, extra: Double = 0.0) =
-            hypot(v.x - drive.pos.x, v.y - drive.pos.y) < viewRadiusM + extra
-        fun onScreen(o: Offset, margin: Float = 40f) =
-            o.x > -margin && o.x < size.width + margin && o.y > -margin && o.y < size.height + margin
-
-        drawRect(colors.mapBg)
-
-        // 장식: 격자 보조 도로 + 건물 블록
-        val roadW = 11f * pxPerM
-        for (x in decor.roadXs) {
-            drawLine(colors.mapRoad, toScreen(Vec2(x, decor.minY)), toScreen(Vec2(x, decor.maxY)), roadW)
-        }
-        for (y in decor.roadYs) {
-            drawLine(colors.mapRoad, toScreen(Vec2(decor.minX, y)), toScreen(Vec2(decor.maxX, y)), roadW)
-        }
-        val blockPath = Path()
-        for (b in decor.blocks) {
-            if (!near(Vec2((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2), 120.0)) continue
-            val p0 = toScreen(Vec2(b.x0, b.y0))
-            val p1 = toScreen(Vec2(b.x1, b.y0))
-            val p2 = toScreen(Vec2(b.x1, b.y1))
-            val p3 = toScreen(Vec2(b.x0, b.y1))
-            blockPath.moveTo(p0.x, p0.y); blockPath.lineTo(p1.x, p1.y)
-            blockPath.lineTo(p2.x, p2.y); blockPath.lineTo(p3.x, p3.y); blockPath.close()
-        }
-        drawPath(blockPath, colors.mapBlock)
-
-        // 경로: 도로 바탕 → 지나온 구간(회색) → 남은 구간(파랑)
-        val d = drive.distanceAlongRouteM
-        fun polyline(points: List<Vec2>): Path {
-            val path = Path()
-            points.forEachIndexed { i, v ->
-                val o = toScreen(v)
-                if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
-            }
-            return path
-        }
-        fun strokeOf(widthM: Float) = Stroke(widthM * pxPerM, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        if (map.route.size >= 2) {
-            drawPath(polyline(map.route), colors.mapRoad, style = strokeOf(15f))
-            val passed = routeGeo.slice(0.0, d)
-            val rest = routeGeo.slice(d, routeGeo.length)
-            if (showDebug && state.debug.corridor.size >= 2) {
-                drawPath(polyline(state.debug.corridor), colors.warn.copy(alpha = 0.38f), style = strokeOf(46f))
-            }
-            if (passed.size >= 2) drawPath(polyline(passed), colors.routePassed, style = strokeOf(6f))
-            if (rest.size >= 2) drawPath(polyline(rest), colors.route, style = strokeOf(8f))
-        }
-
-        // 가게: 업종 아이콘만 (이름은 발표자 모드에서만)
-        val badgeR = 17.dp.toPx()
-        labelPaint.textSize = 14.sp.toPx()
-        labelPaint.color = colors.text.toArgb()
-        for (poi in map.pois) {
-            if (!near(poi.pos)) continue
-            val o = toScreen(poi.pos)
-            if (!onScreen(o)) continue
-            val isWaypoint = map.waypoint?.id == poi.id
-            if (isWaypoint) continue
-            drawCircle(poi.category.badgeColor(), badgeR, o)
-            drawIcon(poi.category.iconKind(), o, badgeR * 1.3f, Color.White)
-            if (showNames) drawLabel(poi.name, o.x + badgeR + 4.dp.toPx(), o.y + 5.dp.toPx(), labelPaint, colors.mapBg)
-        }
-
-        // 디버그: 후보 순위, trail 점, t0 마커
-        if (showDebug) {
-            state.debug.candidates.forEachIndexed { i, c ->
-                val o = toScreen(c.poi.pos)
-                drawCircle(colors.warn, badgeR + 5.dp.toPx(), o, style = Stroke(3.dp.toPx()))
-                drawLabel("${i + 1}", o.x - 4.dp.toPx(), o.y - badgeR - 8.dp.toPx(), labelPaint, colors.mapBg)
-            }
-            for (v in state.debug.trail) {
-                val o = toScreen(v)
-                if (onScreen(o)) drawCircle(colors.text, 3.dp.toPx(), o)
-            }
-            state.debug.t0Pos?.let {
-                val o = toScreen(it)
-                drawCircle(colors.danger, 7.dp.toPx(), o)
-                drawCircle(colors.danger, 13.dp.toPx(), o, style = Stroke(2.dp.toPx()))
-                drawLabel("t0", o.x + 16.dp.toPx(), o.y + 5.dp.toPx(), labelPaint, colors.mapBg)
+        val prims = buildMapScene(
+            w = size.width,
+            h = size.height,
+            dpPx = 1.dp.toPx(),
+            spPx = 1.sp.toPx(),
+            map = map,
+            drive = drive,
+            decor = decor,
+            routeGeo = routeGeo,
+            pal = pal,
+            highlightPoiIds = highlight,
+            showAllNames = showNames,
+            debug = if (showDebug) state.debug else null
+        )
+        for (p in prims) {
+            when (p) {
+                is MapPrim.Poly -> drawPath(polyPath(p.xy), Color(p.color))
+                is MapPrim.Disc -> {
+                    val c = Offset(p.x, p.y)
+                    if (p.strokeW > 0f) drawCircle(Color(p.color), p.r, c, style = Stroke(p.strokeW))
+                    else drawCircle(Color(p.color), p.r, c)
+                }
+                is MapPrim.Badge -> {
+                    val c = Offset(p.x, p.y)
+                    if (p.ring) drawCircle(Color(pal.accent), p.r + 5.dp.toPx(), c, style = Stroke(3.dp.toPx()))
+                    drawCircle(Color(pal.labelHalo), p.r + 2.dp.toPx(), c)
+                    drawCircle(Color(mapIconColor(p.icon)), p.r, c)
+                    drawIcon(p.icon.iconKind(), c, p.r * 1.25f, Color.White)
+                }
+                is MapPrim.Label -> {
+                    labelPaint.textSize = p.size
+                    drawLabel(p.text, p.x, p.y, labelPaint, Color(p.color), Color(p.halo))
+                }
+                is MapPrim.Pin -> {
+                    val c = Offset(p.x, p.y)
+                    drawCircle(Color(pal.labelHalo), p.r + 3.dp.toPx(), c)
+                    if (p.waypoint) {
+                        drawCircle(colors.ok, p.r, c)
+                        drawIcon(IconKind.PIN, c, p.r * 1.25f, Color.White)
+                    } else {
+                        drawCircle(Color(pal.route), p.r, c)
+                        drawIcon(IconKind.FLAG, c, p.r * 1.2f, Color.White)
+                    }
+                }
+                is MapPrim.Car -> drawCar(p.x, p.y, p.size / 2f, Color(pal.route))
+                is MapPrim.Fog -> {
+                    val c = Color(p.color)
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to c,
+                            (p.solidTo / p.fadeTo) to c,
+                            1f to c.copy(alpha = 0f),
+                            startY = 0f,
+                            endY = p.fadeTo
+                        ),
+                        size = Size(size.width, p.fadeTo)
+                    )
+                }
             }
         }
-
-        // 목적지, 경유지 핀
-        val pinR = 19.dp.toPx()
-        val dest = toScreen(map.destination)
-        if (map.route.isNotEmpty() && onScreen(dest)) {
-            drawCircle(colors.mapBg, pinR + 3.dp.toPx(), dest)
-            drawCircle(colors.route, pinR, dest)
-            drawIcon(IconKind.FLAG, dest, pinR * 1.2f, Color.White)
-        }
-        map.waypoint?.let { wp ->
-            val o = toScreen(wp.pos)
-            if (onScreen(o)) {
-                drawCircle(colors.mapBg, pinR + 3.dp.toPx(), o)
-                drawCircle(colors.ok, pinR, o)
-                drawIcon(IconKind.PIN, o, pinR * 1.25f, Color.White)
-                if (showNames) drawLabel(wp.name, o.x + pinR + 4.dp.toPx(), o.y + 5.dp.toPx(), labelPaint, colors.mapBg)
-            }
-        }
-
-        // 차 (항상 위쪽을 본다)
-        val s = 1.dp.toPx()
-        val car = Path().apply {
-            moveTo(cx, cy - 20 * s)
-            lineTo(cx + 15 * s, cy + 15 * s)
-            lineTo(cx, cy + 7 * s)
-            lineTo(cx - 15 * s, cy + 15 * s)
-            close()
-        }
-        drawCircle(colors.route.copy(alpha = 0.25f), 30 * s, Offset(cx, cy))
-        drawPath(car, colors.car)
-        drawPath(car, colors.route, style = Stroke(2.5f * s, join = StrokeJoin.Round))
     }
 }
 
-/** 글자 뒤에 배경색 테두리를 둘러 지도 위에서도 읽히게 한다 */
-private fun DrawScope.drawLabel(text: String, x: Float, y: Float, paint: Paint, halo: Color) {
+private fun polyPath(xy: FloatArray): Path {
+    val path = Path()
+    path.moveTo(xy[0], xy[1])
+    var i = 2
+    while (i < xy.size) {
+        path.lineTo(xy[i], xy[i + 1])
+        i += 2
+    }
+    path.close()
+    return path
+}
+
+/** 내 차: 바닥 그림자 + 흰 원 + 경로색 원 + 흰 화살표 (항상 위쪽을 본다) */
+private fun DrawScope.drawCar(x: Float, y: Float, r: Float, routeColor: Color) {
+    drawOval(routeColor.copy(alpha = 0.18f), topLeft = Offset(x - r * 1.7f, y - r * 0.75f), size = Size(r * 3.4f, r * 1.9f))
+    drawCircle(Color.White, r, Offset(x, y))
+    drawCircle(routeColor, r * 0.8f, Offset(x, y))
+    val arrow = Path().apply {
+        moveTo(x, y - r * 0.55f)
+        lineTo(x + r * 0.42f, y + r * 0.45f)
+        lineTo(x, y + r * 0.2f)
+        lineTo(x - r * 0.42f, y + r * 0.45f)
+        close()
+    }
+    drawPath(arrow, Color.White)
+}
+
+/** 글자 뒤에 배경색 테두리를 둘러 지도 위에서도 읽히게 한다 (가운데 정렬 Paint 사용) */
+private fun DrawScope.drawLabel(text: String, x: Float, y: Float, paint: Paint, color: Color, halo: Color) {
     val canvas = drawContext.canvas.nativeCanvas
-    val fill = paint.color
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = paint.textSize * 0.28f
+    paint.strokeJoin = Paint.Join.ROUND
     paint.color = halo.toArgb()
     canvas.drawText(text, x, y, paint)
     paint.style = Paint.Style.FILL
-    paint.color = fill
+    paint.color = color.toArgb()
     canvas.drawText(text, x, y, paint)
-}
-
-// ---------------------------------------------------------------- 장식 (UI에서 생성, 시드 고정)
-
-internal class Block(val x0: Double, val y0: Double, val x1: Double, val y1: Double)
-
-internal class Decor(
-    val roadXs: List<Double>, val roadYs: List<Double>,
-    val minX: Double, val maxX: Double, val minY: Double, val maxY: Double,
-    val blocks: List<Block>
-)
-
-private const val GRID_M = 200.0
-private const val BLOCK_INSET_M = 15.0
-private const val BLOCK_GAP_M = 9.0
-
-/** 경로 바운딩 박스 기준 격자 도로와 그 사이 건물 블록 */
-internal fun buildDecor(route: List<Vec2>): Decor {
-    if (route.isEmpty()) return Decor(emptyList(), emptyList(), 0.0, 0.0, 0.0, 0.0, emptyList())
-    val ox = route[0].x
-    val oy = route[0].y
-    fun snapDown(v: Double, o: Double) = o + Math.floor((v - o) / GRID_M) * GRID_M
-    val minX = snapDown(route.minOf { it.x } - 400.0, ox)
-    val maxX = snapDown(route.maxOf { it.x } + 600.0, ox)
-    val minY = snapDown(route.minOf { it.y } - 400.0, oy)
-    val maxY = snapDown(route.maxOf { it.y } + 600.0, oy)
-    val xs = generateSequence(minX) { it + GRID_M }.takeWhile { it <= maxX + 1e-6 }.toList()
-    val ys = generateSequence(minY) { it + GRID_M }.takeWhile { it <= maxY + 1e-6 }.toList()
-
-    val rnd = java.util.Random(20261114L)
-    val blocks = ArrayList<Block>()
-    for (i in 0 until xs.size - 1) for (j in 0 until ys.size - 1) {
-        val x0 = xs[i] + BLOCK_INSET_M
-        val x1 = xs[i + 1] - BLOCK_INSET_M
-        val y0 = ys[j] + BLOCK_INSET_M
-        val y1 = ys[j + 1] - BLOCK_INSET_M
-        val splitX = x0 + (x1 - x0) * (0.35 + 0.3 * rnd.nextDouble())
-        val splitY = y0 + (y1 - y0) * (0.35 + 0.3 * rnd.nextDouble())
-        val g = BLOCK_GAP_M / 2
-        when (rnd.nextInt(4)) {
-            0 -> blocks.add(Block(x0, y0, x1, y1))
-            1 -> {
-                blocks.add(Block(x0, y0, splitX - g, y1)); blocks.add(Block(splitX + g, y0, x1, y1))
-            }
-            2 -> {
-                blocks.add(Block(x0, y0, x1, splitY - g)); blocks.add(Block(x0, splitY + g, x1, y1))
-            }
-            else -> {
-                blocks.add(Block(x0, y0, splitX - g, splitY - g)); blocks.add(Block(splitX + g, y0, x1, splitY - g))
-                blocks.add(Block(x0, splitY + g, splitX - g, y1)); blocks.add(Block(splitX + g, splitY + g, x1, y1))
-            }
-        }
-    }
-    return Decor(xs, ys, minX, maxX, minY, maxY, blocks)
 }

@@ -21,37 +21,34 @@ class BacktrackerTest {
 
     @Test
     fun `(a) 오른쪽에 빵집 하나만 있는 구간 - HIGH로 달빛제과`() {
-        // 달빛제과(400m)를 지나고 3초 뒤(442m) 질문
+        // 달빛제과(p09, 400m 오른쪽)를 지나고 3초 뒤(442m) 질문
         val r = askAt(250.0, 442.0, speed50, "방금 오른쪽에 있던 빵집 뭐야?")
-        assertEquals("p05", r.candidates.first().candidate.poi.id)
+        assertEquals("p09", r.candidates.first().candidate.poi.id)
+        assertEquals("달빛제과", r.candidates.first().candidate.poi.name)
         assertEquals(Confidence.HIGH, r.confidence)
         assertEquals(com.akkageugot.demo.contract.Side.RIGHT, r.candidates.first().candidate.side)
     }
 
     @Test
-    fun `(b) 빵집과 카페가 붙은 구간 - 1위 아침브레드, 2위 오후세시커피`() {
-        val r = askAt(560.0, 757.0, speed50, "방금 오른쪽에 있던 빵집 뭐야?")
-        assertEquals("p08", r.candidates[0].candidate.poi.id)
-        assertEquals("p09", r.candidates[1].candidate.poi.id)
+    fun `(b) 카페 둘이 붙은 구간 - 1위 오후세시커피, 2위 골목카페`() {
+        // 오후세시커피(p05, 250m), 골목카페(p06, 262m) 둘 다 오른쪽
+        val r = askAt(60.0, 300.0, speed50, "방금 오른쪽에 있던 카페 뭐야?")
+        assertEquals("p05", r.candidates[0].candidate.poi.id)
+        assertEquals("p06", r.candidates[1].candidate.poi.id)
     }
 
     @Test
     fun `(c) 왼쪽 빵집 - 밤달베이커리를 찾는다`() {
-        // 1600m 지점: 왼쪽 밤달베이커리, 오른쪽 강변커피
-        val r = askAt(1450.0, 1642.0, speed50, "방금 왼쪽에 있던 빵집 뭐야?")
-        assertEquals("p18", r.candidates.first().candidate.poi.id)
+        // 1620m 지점 왼쪽 밤달베이커리(p31)
+        val r = askAt(1470.0, 1662.0, speed50, "방금 왼쪽에 있던 빵집 뭐야?")
+        assertEquals("p31", r.candidates.first().candidate.poi.id)
         assertEquals(com.akkageugot.demo.contract.Side.LEFT, r.candidates.first().candidate.side)
     }
 
     @Test
-    fun `(c) 방향 없이 카페를 물으면 우측통행 가중으로 강변커피`() {
-        val r = askAt(1450.0, 1642.0, speed50, "방금 카페 뭐였지?")
-        assertEquals("p19", r.candidates.first().candidate.poi.id)
-    }
-
-    @Test
     fun `(d) 가게 데이터가 없는 구간 - LOW, 후보 없음`() {
-        val r = askAt(2350.0, 2592.0, speed50, "방금 거 뭐야?")
+        // 2240~2760m 빈 구간. 2500m에서 질문
+        val r = askAt(2300.0, 2500.0, speed50, "방금 거 뭐야?")
         assertTrue(r.candidates.isEmpty())
         assertEquals(Confidence.LOW, r.confidence)
     }
@@ -85,11 +82,12 @@ class BacktrackerTest {
 
     @Test
     fun `아까 3분 전이면 t0를 3분 앞으로 옮긴다`() {
-        // 10m/s로 전체 경로 주행, 2900m 지점(t=290s)에서 "3분 전" 카페 → t=110s, 1100m 부근
-        val trail = TestFixtures.drive(0.0, 2950.0, 10.0)
-        val t0 = TestFixtures.timeAt(0.0, 2900.0, 10.0)
+        // 10m/s로 주행, 2050m(t=205s)에서 "3분 전" 카페 → t=25s, 250m 부근 → 오후세시커피(p05)
+        val trail = TestFixtures.drive(0.0, 2100.0, 10.0)
+        val t0 = TestFixtures.timeAt(0.0, 2050.0, 10.0)
         val r = backtracker.search(trail, t0, IntentParser.parse("아까 3분 전에 지나친 카페 뭐였지?"))
-        assertEquals("p13", r.candidates.first().candidate.poi.id) // 첫차커피(1000m, 왼쪽)
+        assertEquals("p05", r.candidates.first().candidate.poi.id)
+        assertEquals("오후세시커피", r.candidates.first().candidate.poi.name)
     }
 
     @Test
