@@ -8,17 +8,33 @@ import com.akkageugot.demo.contract.DemoEngine
 import com.akkageugot.demo.contract.DriveState
 import com.akkageugot.demo.contract.EngineSettings
 import com.akkageugot.demo.contract.Gear
+import com.akkageugot.demo.contract.HeadsUp
 import com.akkageugot.demo.contract.MapData
+import com.akkageugot.demo.contract.Poi
+import com.akkageugot.demo.contract.SavedPlace
+import com.akkageugot.demo.contract.Speaker
 import com.akkageugot.demo.contract.UiAction
 import com.akkageugot.demo.contract.Vec2
+import com.akkageugot.demo.contract.VoiceLine
+import com.akkageugot.demo.contract.VoicePhase
 import com.akkageugot.demo.contract.emptyAppState
+import com.akkageugot.demo.engine.core.Backtracker
+import com.akkageugot.demo.engine.core.BacktrackResult
+import com.akkageugot.demo.engine.core.DemoRoutePlanner
+import com.akkageugot.demo.engine.core.DialogEffect
+import com.akkageugot.demo.engine.core.DialogEvent
+import com.akkageugot.demo.engine.core.DialogMachine
 import com.akkageugot.demo.engine.core.EngineClock
 import com.akkageugot.demo.engine.core.TrailBuffer
 import com.akkageugot.demo.engine.core.TrailSample
 import com.akkageugot.demo.engine.data.ScenarioData
 import com.akkageugot.demo.engine.data.ScenarioLoader
+import com.akkageugot.demo.engine.platform.MockSpeechInput
 import com.akkageugot.demo.engine.platform.MockUxRestrictions
 import com.akkageugot.demo.engine.platform.MockVehicleSignals
+import com.akkageugot.demo.engine.platform.AndroidSpeechOutput
+import com.akkageugot.demo.engine.platform.SpeechInput
+import com.akkageugot.demo.engine.platform.SpeechOutput
 import com.akkageugot.demo.engine.platform.UxRestrictions
 import com.akkageugot.demo.engine.platform.VehicleSignals
 import com.akkageugot.demo.engine.sim.SimulatedDrive
@@ -33,10 +49,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
+import kotlin.math.ceil
 
 /**
- * 진짜 엔진. 2단계: SimulatedDrive를 100ms 틱으로 돌리고 AppState(map/drive)를 내보낸다.
- * 모든 상태 변경은 단일 루프 스레드에서만 일어나도록 UiAction을 채널에 큐잉한다.
+ * 진짜 엔진. 3단계: SimulatedDrive 틱 루프에 DialogMachine, 목업 음성, 타이머,
+ * 저장 목록, 경유지를 연결한다. 모든 상태 변경은 단일 루프 스레드에서만 일어난다.
  * 생성자 시그니처 (Context)는 바꾸지 않는다 (docs/CONTRACT.md).
  */
 open class RealDemoEngine(private val context: Context) : DemoEngine {
@@ -51,8 +68,12 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
 
     private lateinit var data: ScenarioData
     private lateinit var drive: SimulatedDrive
+    private lateinit var routePlanner: DemoRoutePlanner
     private lateinit var vehicle: VehicleSignals
     private lateinit var ux: UxRestrictions
+    protected lateinit var speechInput: SpeechInput
+    protected lateinit var speechOutput: SpeechOutput
+    private lateinit var dialog: DialogMachine
     private val trail = TrailBuffer()
 
     private var settings = EngineSettings()
@@ -60,6 +81,20 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private var simClockMs = 0L
     private var lastTrailSimMs = Long.MIN_VALUE
     private var lastLogRealMs = 0L
+    private var idSeq = 0
+
+    // 대화/음성/카드 상태 (모두 루프 스레드에서만 접근)
+    private var voicePhase = VoicePhase.IDLE
+    private val voiceLines = mutableListOf<TimedVoiceLine>()
+    private var headsUp: HeadsUp? = null
+    private val saved = mutableListOf<SavedPlace>()
+    private var lastResult: BacktrackResult = BacktrackResult.EMPTY
+    private var lastIntentJson = "{}"
+    private var answerDeadlineMs: Long? = null
+    private var currentWaypoint: Poi? = null
+    private var etaDelayMin = 0
+
+    private data class TimedVoiceLine(val line: VoiceLine, val removeAtMs: Long)
 
     override fun start() {
         data = ScenarioLoader.parse(readAsset("scenarios.json"))
@@ -67,10 +102,25 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             targetSpeedKmh = settings.targetSpeedKmh
             timeScale = settings.timeScale
         }
+        routePlanner = DemoRoutePlanner(data.route.points)
         vehicle = MockVehicleSignals(gearProvider = { drive.gear }, speedProvider = { drive.speedKmh })
         ux = MockUxRestrictions(restrictedProvider = { drive.restrictedByMock() })
+        speechInput = createSpeechInput()
+        speechOutput = createSpeechOutput()
+        dialog = DialogMachine(
+            backtrack = { t0, intent ->
+                Backtracker(data.pois).search(trail.samples(), t0, intent).also { lastResult = it }
+            },
+            currentPos = { drive.pos },
+            nowMs = { System.currentTimeMillis() },
+            labelFor = { EngineClock.savedLabel(it) },
+            newId = { "sp-${idSeq++}" }
+        )
+
         vehicle.start()
         ux.start()
+        speechOutput.start()
+        speechInput.setOnResult { text -> onRecognized(text) }
         publish()
 
         Log.i(TAG, "start(): route=${data.route.points.size}pts pois=${data.pois.size} 루프 시작")
@@ -83,9 +133,17 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         }
     }
 
+    /** 4단계에서 Pleos STT로 교체. 기본은 목업 */
+    protected open fun createSpeechInput(): SpeechInput = MockSpeechInput()
+
+    /** 4단계에서 Pleos TTS로 교체. 기본은 Android TTS 목업 */
+    protected open fun createSpeechOutput(): SpeechOutput = AndroidSpeechOutput(context)
+
     override fun stop() {
         vehicle.stop()
         ux.stop()
+        speechInput.stop()
+        speechOutput.stop()
         scope.cancel()
         loopContext.close()
     }
@@ -108,10 +166,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
 
             if (simClockMs - lastTrailSimMs >= TRAIL_INTERVAL_MS) {
                 lastTrailSimMs = simClockMs
-                trail.add(
-                    TrailSample(simClockMs, drive.pos, drive.speedMps, drive.headingRad)
-                )
+                trail.add(TrailSample(simClockMs, drive.pos, drive.speedMps, drive.headingRad))
             }
+            expireTimers(now)
             if (now - lastLogRealMs >= 1000) {
                 lastLogRealMs = now
                 logSummary()
@@ -130,12 +187,10 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     protected open fun handle(action: UiAction) {
         when (action) {
             is UiAction.SetTargetSpeed -> {
-                settings = settings.copy(targetSpeedKmh = action.kmh)
-                drive.targetSpeedKmh = action.kmh
+                settings = settings.copy(targetSpeedKmh = action.kmh); drive.targetSpeedKmh = action.kmh
             }
             is UiAction.SetTimeScale -> {
-                settings = settings.copy(timeScale = action.scale)
-                drive.timeScale = action.scale
+                settings = settings.copy(timeScale = action.scale); drive.timeScale = action.scale
             }
             is UiAction.SetGear -> drive.gear = action.gear
             is UiAction.RunScenario -> startScenario(action.n)
@@ -143,8 +198,80 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 settings = settings.copy(useSdk = settings.useSdk + (action.key to action.enabled))
             is UiAction.SetMirrorToRealNavi ->
                 settings = settings.copy(mirrorToRealNavi = action.enabled)
-            else -> Unit // 음성/대화/저장 관련은 이후 단계에서 처리
+
+            is UiAction.MicPressed -> {
+                addVoiceLine(Speaker.USER, "…") // 듣는 중 표시
+                apply(dialog.onEvent(DialogEvent.UtteranceStarted(simClockMs)))
+                speechInput.start()
+            }
+            is UiAction.MicReleased -> speechInput.stop()
+            is UiAction.TypedUtterance -> speechInput.feedUtterance(action.text)
+            is UiAction.HeadsUpClicked ->
+                apply(dialog.onEvent(DialogEvent.ButtonClicked(action.button, System.currentTimeMillis())))
+
+            else -> Unit // SelectCandidate/UpdateMemo/NavigateTo 는 이후 단계
         }
+    }
+
+    private fun onRecognized(text: String) {
+        // 듣는 중 표시를 실제 발화로 교체
+        voiceLines.removeAll { it.line.speaker == Speaker.USER && it.line.text == "…" }
+        addVoiceLine(Speaker.USER, text)
+        apply(dialog.onEvent(DialogEvent.UtteranceFinished(text, simClockMs)))
+    }
+
+    private fun apply(effects: List<DialogEffect>) {
+        val now = System.currentTimeMillis()
+        effects.forEach { e ->
+            when (e) {
+                is DialogEffect.SetPhase -> voicePhase = e.phase
+                is DialogEffect.Speak -> { speechOutput.speak(e.text); addVoiceLine(Speaker.APP, e.text) }
+                is DialogEffect.ShowHeadsUp -> headsUp = e.headsUp
+                is DialogEffect.ClearHeadsUp -> headsUp = null
+                is DialogEffect.Save -> upsertSaved(e.place)
+                is DialogEffect.AddWaypoint -> addWaypoint(e.poi)
+                is DialogEffect.StartAnswerTimer -> answerDeadlineMs = now + ANSWER_TIMEOUT_MS
+                is DialogEffect.CancelAnswerTimer -> answerDeadlineMs = null
+                is DialogEffect.SetIntentJson -> lastIntentJson = e.json
+            }
+        }
+    }
+
+    private fun expireTimers(now: Long) {
+        voiceLines.removeAll { it.removeAtMs <= now }
+        answerDeadlineMs?.let { deadline ->
+            if (now >= deadline) {
+                answerDeadlineMs = null
+                apply(dialog.onEvent(DialogEvent.AnswerTimeout(simClockMs)))
+            }
+        }
+    }
+
+    private fun addVoiceLine(speaker: Speaker, text: String) {
+        voiceLines += TimedVoiceLine(
+            VoiceLine(id = "vl-${idSeq++}", speaker = speaker, text = text),
+            removeAtMs = System.currentTimeMillis() + VOICE_LINE_MS
+        )
+        while (voiceLines.size > MAX_VOICE_LINES) voiceLines.removeAt(0)
+    }
+
+    private fun upsertSaved(place: SavedPlace) {
+        val i = saved.indexOfFirst { it.id == place.id }
+        if (i >= 0) saved[i] = place else saved += place
+        Log.i(TAG, "저장: [${place.status}] ${place.label} sel=${place.selectedPoiId}")
+    }
+
+    /** VISIT 선택 시 경유지 경로 생성 + 안내 (전체 내비 미러링은 5단계) */
+    private fun addWaypoint(poi: Poi) {
+        val planned = routePlanner.routeWithWaypoint(drive.distanceAlongM, poi)
+        drive.setRoute(planned.route)
+        currentWaypoint = poi
+        val cruiseMps = (settings.targetSpeedKmh / 3.6).coerceAtLeast(1.0)
+        etaDelayMin = ceil(planned.extraDistanceM / cruiseMps / 60.0).toInt()
+        val line = "경유지로 넣었어요. ${etaDelayMin}분 늘어나요."
+        speechOutput.speak(line)
+        addVoiceLine(Speaker.APP, line)
+        Log.i(TAG, "경유지 추가: ${poi.name}, +${etaDelayMin}분")
     }
 
     private fun startScenario(n: Int) {
@@ -152,7 +279,12 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         drive.setRoute(data.route.points)
         drive.startAt(scenario.startDistanceAlongRouteM, Gear.D)
         trail.clear()
-        lastTrailSimMs = Long.MIN_VALUE
+        lastTrailSimMs = simClockMs - TRAIL_INTERVAL_MS
+        currentWaypoint = null
+        etaDelayMin = 0
+        headsUp = null
+        answerDeadlineMs = null
+        lastResult = BacktrackResult.EMPTY
         runningScenario = n
         Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m")
     }
@@ -170,7 +302,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 originalRoute = data.route.points,
                 turns = drive.turns,
                 pois = data.pois,
-                waypoint = null,
+                waypoint = currentWaypoint,
                 destination = data.route.points.lastOrNull() ?: Vec2(0.0, 0.0)
             ),
             drive = DriveState(
@@ -184,16 +316,22 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 distanceToNextTurnM = drive.distanceToNextTurnM,
                 remainingM = drive.remainingM,
                 etaText = EngineClock.etaText(drive.remainingM, settings.targetSpeedKmh, now),
-                etaDelayMin = 0
+                etaDelayMin = etaDelayMin
             ),
+            voicePhase = voicePhase,
+            voiceLines = voiceLines.map { it.line },
+            headsUp = headsUp,
+            saved = saved.toList(),
             settings = settings,
             debug = DebugInfo(
                 trail = trail.samples().map { it.pos },
-                t0Pos = null,
-                corridor = emptyList(),
-                candidates = emptyList(),
-                lastIntentJson = "{}",
+                t0Pos = lastResult.t0Pos,
+                corridor = lastResult.corridor,
+                candidates = lastResult.candidates.map { it.candidate },
+                lastIntentJson = lastIntentJson,
                 sdkStatus = mapOf(
+                    "STT" to speechInput.sourceLabel,
+                    "TTS" to speechOutput.sourceLabel,
                     "VEHICLE" to vehicle.sourceLabel,
                     "UX" to ux.sourceLabel
                 )
@@ -205,10 +343,10 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private fun logSummary() {
         Log.i(
             TAG,
-            "gear=${drive.gear} speed=%.1fkm/h along=%.0fm remain=%.0fm restricted=%b scenario=%s"
+            "gear=${drive.gear} speed=%.1fkm/h along=%.0fm remain=%.0fm restricted=%b phase=%s saved=%d scenario=%s"
                 .format(
                     drive.speedKmh, drive.distanceAlongM, drive.remainingM,
-                    ux.restricted, runningScenario?.toString() ?: "-"
+                    ux.restricted, voicePhase, saved.size, runningScenario?.toString() ?: "-"
                 )
         )
     }
@@ -220,5 +358,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         const val TAG = "AKKA"
         const val TICK_MS = 100L
         const val TRAIL_INTERVAL_MS = 1000L
+        const val ANSWER_TIMEOUT_MS = 6000L
+        const val VOICE_LINE_MS = 4000L
+        const val MAX_VOICE_LINES = 2
     }
 }

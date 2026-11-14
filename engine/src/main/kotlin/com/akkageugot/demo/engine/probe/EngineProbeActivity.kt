@@ -15,6 +15,7 @@ import com.akkageugot.demo.contract.AppState
 import com.akkageugot.demo.contract.EngineProvider
 import com.akkageugot.demo.contract.Gear
 import com.akkageugot.demo.contract.UiAction
+import com.akkageugot.demo.engine.demo.DemoCommandReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,14 +32,7 @@ class EngineProbeActivity : Activity() {
     private lateinit var dump: TextView
     private var scope: CoroutineScope? = null
 
-    private val presets = listOf(
-        "방금 오른쪽에 있던 빵집 뭐야?",
-        "저장해",
-        "들렀다 가자",
-        "아니 그 옆에",
-        "아까 3분 전에 지나친 카페 뭐였지?",
-        "방금 거 뭐야?"
-    )
+    private val presets = DemoCommandReceiver.PRESETS
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
