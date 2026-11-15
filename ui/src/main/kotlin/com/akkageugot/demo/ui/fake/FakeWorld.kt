@@ -132,9 +132,11 @@ object FakeWorld {
      * 90m을 벗어나면(옆에 아무것도 없으면) null을 돌려, 한참 전이나 멀리 있는 걸
      * 억지로 추천하지 않는다 (예전 nearestBuilding은 거리 제한이 없어 200~300m 전 건물을 추천했다).
      */
-    fun nearbyBuilding(refAlong: Double): Building? =
-        nearbyCandidates.minByOrNull { kotlin.math.abs(it.along - refAlong) }
+    fun nearbyBuilding(refAlong: Double, side: Side = Side.UNKNOWN): Building? {
+        val pool = if (side == Side.UNKNOWN) nearbyCandidates else nearbyCandidates.filter { it.side == side }
+        return pool.minByOrNull { kotlin.math.abs(it.along - refAlong) }
             ?.takeIf { kotlin.math.abs(it.along - refAlong) <= NEARBY_MATCH_M }
+    }
 
     /** 경로 기준 가게의 좌우 (project lateral: 왼쪽 +, 오른쪽 -) */
     private fun sideOf(p: Poi): Side {

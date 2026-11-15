@@ -332,6 +332,11 @@ private fun LocationOnlyCard(place: SavedPlace, selected: Boolean, onSelect: () 
         Spacer(Modifier.height(6.dp))
         Text("이 근처였어요", color = c.text, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         Text("위치만", color = c.textDim, fontSize = 16.sp, maxLines = 1)
+        Text(
+            "X ${"%.0f".format(place.pos.x)} · Y ${"%.0f".format(place.pos.y)} m",
+            color = c.textDim.copy(alpha = 0.6f), fontSize = 13.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Spacer(Modifier.weight(1f))
         BasicTextField(
             value = memo,

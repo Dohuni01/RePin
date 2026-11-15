@@ -246,7 +246,22 @@ class FakeDemoEngine(@Suppress("UNUSED_PARAMETER") context: Context) : DemoEngin
         val text = typedText
         typedText = null
         cancel(TAG_FLOW)
+        // 짧은 좌우 단어("왼쪽", "오른쪽" 등 6자 이하)는 옆에뭐있어 로직으로 직행
+        val side = text?.let { parseSide(it).takeIf { s -> s != Side.UNKNOWN && it.trim().replace(" ", "").length <= 6 } }
+            ?: Side.UNKNOWN
+        if (side != Side.UNKNOWN) {
+            voicePhase = VoicePhase.IDLE
+            if (text != null) addLine(Speaker.USER, text)
+            askNearby(side)
+            return
+        }
         after(1000, TAG_FLOW) { think(text) }
+    }
+
+    private fun parseSide(text: String): Side = when {
+        listOf("오른쪽", "우측", "오른편").any { text.contains(it) } -> Side.RIGHT
+        listOf("왼쪽", "좌측", "왼편").any { text.contains(it) } -> Side.LEFT
+        else -> Side.UNKNOWN
     }
 
     private fun typed(text: String) {
@@ -619,14 +634,13 @@ class FakeDemoEngine(@Suppress("UNUSED_PARAMETER") context: Context) : DemoEngin
      * 지도 "옆에 뭐 있어?" 버튼. 속도가 빠를수록 더 뒤의 건물을 본다
      * (버튼을 누른 순간엔 그 가게가 이미 지나가 있으므로).
      */
-    private fun askNearby() {
-        // "제일 가까운 곳"을 준다: 지금 차 위치(d) 기준으로 가장 가까운 가게.
-        // 뒤로 물러난 기준점(d-lookback)을 쓰면 바로 옆 대신 더 뒤의 가게가 뽑히므로 d를 그대로 쓴다.
+    private fun askNearby(side: Side = Side.UNKNOWN) {
         val refAlong = d.coerceIn(0.0, geo.length)
-        val b = FakeWorld.nearbyBuilding(refAlong)
-        val ranked = b?.shops.orEmpty() // 이미 인기도 내림차순
+        val b = FakeWorld.nearbyBuilding(refAlong, side)
+        val ranked = b?.shops.orEmpty()
         if (b == null || ranked.isEmpty()) {
-            speak("지금은 옆에 안내할 만한 가게가 없어요.")
+            speak(if (side == Side.UNKNOWN) "지금은 옆에 안내할 만한 가게가 없어요."
+                  else "${sideText(side)}에는 가게가 안 보여요.")
             return
         }
 
@@ -639,15 +653,18 @@ class FakeDemoEngine(@Suppress("UNUSED_PARAMETER") context: Context) : DemoEngin
         t0D = refAlong
         t0Pos = geo.posAt(refAlong)
         corridor = geo.slice(refAlong - 30.0, refAlong + 10.0)
-        pending = Pending(cands, 0, "옆에 뭐 있어?", geo.posAt(refAlong))
-        lastIntentJson = """{"type":"NEARBY","category":null,"side":"${b.side}","timeOffsetSec":0}"""
+        val utterance = when (side) {
+            Side.LEFT -> "왼쪽"; Side.RIGHT -> "오른쪽"; else -> "옆에 뭐 있어?"
+        }
+        pending = Pending(cands, 0, utterance, geo.posAt(refAlong))
+        lastIntentJson = """{"type":"NEARBY","category":null,"side":"$side","timeOffsetSec":0}"""
 
         showNearbyCard(b, ranked)
-        val sideText = sideText(b.side)
+        val st = sideText(b.side)
         val line = if (ranked.size > 1)
-            "$sideText 건물에 ${ranked[0].name}가 있어요. 같은 건물에 ${ranked[1].name}도 있어요."
+            "${st}에 ${ranked[0].name}가 있어요. 같은 건물에 ${ranked[1].name}도 있어요."
         else
-            "$sideText 에 ${ranked[0].name}가 있어요."
+            "${st}에 ${ranked[0].name}가 있어요."
         speak(line)
     }
 
