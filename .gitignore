@@ -17,6 +17,7 @@ build/
 
 # 제출용 release APK는 저장소에 포함한다 (위 *.apk 규칙 예외)
 !apk/*.apk
+!apk/**/*.apk
 
 # 스플래시 확인용 스크린샷 (임시)
 /splash_check.png
