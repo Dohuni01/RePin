@@ -7,5 +7,7 @@
 
     <application
         android:name="com.akkageugot.demo.AkkaApp"
-        android:label="RePin" />
+        android:icon="@mipmap/ic_launcher"
+        android:label="RePin"
+        android:roundIcon="@mipmap/ic_launcher_round" />
 </manifest>
