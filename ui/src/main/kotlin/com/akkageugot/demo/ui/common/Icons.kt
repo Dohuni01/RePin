@@ -22,7 +22,8 @@ import kotlin.math.sin
 enum class IconKind {
     BAKERY, CAFE, RESTAURANT, FLOWER, CONVENIENCE, ETC, PIN,
     PARKING, FUEL, PHARMACY, BANK,
-    MIC, GEAR, LIST, TURN_LEFT, TURN_RIGHT, STRAIGHT, FLAG, BACK, CHECK, PHONE
+    MIC, GEAR, LIST, TURN_LEFT, TURN_RIGHT, STRAIGHT, FLAG, BACK, CHECK, PHONE,
+    MAP, STAR, HOME
 }
 
 fun Category?.iconKind(): IconKind = when (this) {
@@ -179,6 +180,25 @@ fun DrawScope.drawIcon(kind: IconKind, center: Offset, sizePx: Float, color: Col
         IconKind.PHONE -> {
             rrect(7f, 2.5f, 17f, 21.5f, 2.5f)
             drawCircle(color, 1.1f * u, p(12f, 18.3f))
+        }
+        IconKind.MAP -> {
+            poly(3f, 6f, 9f, 3.5f, 15f, 6f, 21f, 3.5f, 21f, 18f, 15f, 20.5f, 9f, 18f, 3f, 20.5f, close = true)
+            line(9f, 3.5f, 9f, 18f); line(15f, 6f, 15f, 20.5f)
+        }
+        IconKind.STAR -> {
+            val xy = FloatArray(20)
+            for (i in 0 until 10) {
+                val a = -PI / 2 + i * PI / 5
+                val r = if (i % 2 == 0) 9.5f else 4.2f
+                xy[i * 2] = 12f + r * cos(a).toFloat()
+                xy[i * 2 + 1] = 12.8f + r * sin(a).toFloat()
+            }
+            poly(*xy, close = true)
+        }
+        IconKind.HOME -> {
+            poly(3.5f, 11f, 12f, 3.5f, 20.5f, 11f)
+            poly(6f, 9.5f, 6f, 20f, 18f, 20f, 18f, 9.5f)
+            poly(10f, 20f, 10f, 14.5f, 14f, 14.5f, 14f, 20f)
         }
     }
 }

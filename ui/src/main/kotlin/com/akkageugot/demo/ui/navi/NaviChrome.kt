@@ -21,7 +21,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -42,33 +45,51 @@ fun formatDistance(m: Double): String = when {
     else -> "${((m / 10.0).roundToInt() * 10).coerceAtLeast(10)}m"
 }
 
-/** 좌측 상단 TBT 칩: 회전 방향 아이콘 + "300m 후 우회전" */
+/** 좌측 상단 TBT 칩 (작게 두 줄): 회전 방향 아이콘 + "300m" / "후 우회전". 가운데 거울 카드와 겹치지 않게 폭을 줄였다 */
 @Composable
 fun TbtChip(drive: DriveState, modifier: Modifier = Modifier) {
     val c = LocalAkkaColors.current
     val turn = drive.nextTurn
     val dist = drive.distanceToNextTurnM
     val icon: IconKind
-    val text: String
+    val big: String
+    val small: String
     if (turn != null && dist != null) {
         icon = if (turn.direction == TurnDirection.LEFT) IconKind.TURN_LEFT else IconKind.TURN_RIGHT
         val dir = if (turn.direction == TurnDirection.LEFT) "좌회전" else "우회전"
-        text = if (dist < 30.0) "곧 $dir" else "${formatDistance(dist)} 후 $dir"
+        if (dist < 30.0) {
+            big = "곧"
+            small = dir
+        } else {
+            big = formatDistance(dist)
+            small = "후 $dir"
+        }
     } else {
         icon = IconKind.STRAIGHT
-        text = "목적지까지 직진"
+        big = "직진"
+        small = "목적지까지"
     }
+    val shape = RoundedCornerShape(24.dp)
     Row(
         modifier
-            .clip(RoundedCornerShape(20.dp))
+            .shadow(6.dp, shape, clip = false)
+            .clip(shape)
             .background(c.surface)
-            .border(1.dp, c.outline, RoundedCornerShape(20.dp))
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .border(1.dp, c.outline, shape)
+            .padding(start = 14.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AkkaIcon(icon, c.accent, Modifier.size(52.dp))
-        Spacer(Modifier.width(14.dp))
-        Text(text, color = c.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Box(
+            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(c.accent2.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            AkkaIcon(icon, c.accent2, Modifier.size(42.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(big, color = c.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(small, color = c.textDim, fontSize = 18.sp, maxLines = 1)
+        }
     }
 }
 
@@ -76,11 +97,13 @@ fun TbtChip(drive: DriveState, modifier: Modifier = Modifier) {
 @Composable
 fun BottomInfo(drive: DriveState, modifier: Modifier = Modifier) {
     val c = LocalAkkaColors.current
+    val shape = RoundedCornerShape(20.dp)
     Row(
         modifier
-            .clip(RoundedCornerShape(18.dp))
+            .shadow(4.dp, shape, clip = false)
+            .clip(shape)
             .background(c.surface)
-            .border(1.dp, c.outline, RoundedCornerShape(18.dp))
+            .border(1.dp, c.outline, shape)
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -96,7 +119,7 @@ fun BottomInfo(drive: DriveState, modifier: Modifier = Modifier) {
 }
 
 /**
- * 큰 [말하기] 버튼. 누르면 onPress(MicPressed), 떼면 onRelease(MicReleased).
+ * 큰 [말하기] 버튼 (산호색 그라데이션 + 흰 테). 누르면 onPress(MicPressed), 떼면 onRelease(MicReleased).
  * voicePhase는 색과 글자만 바뀐다 (주행 중 애니메이션 금지).
  */
 @Composable
@@ -110,21 +133,22 @@ fun MicButton(
     val c = LocalAkkaColors.current
     val press by rememberUpdatedState(onPress)
     val release by rememberUpdatedState(onRelease)
-    val bg: Color
-    val fg: Color
+    val bg: Brush
     val label: String
     when (phase) {
-        VoicePhase.IDLE -> { bg = c.accent; fg = c.onAccent; label = "말하기" }
-        VoicePhase.LISTENING -> { bg = c.danger; fg = Color.White; label = "듣는 중" }
-        VoicePhase.THINKING -> { bg = c.warn; fg = if (c.isDay) Color.White else Color(0xFF1B1200); label = "찾는 중" }
-        VoicePhase.SPEAKING -> { bg = c.ok; fg = if (c.isDay) Color.White else Color(0xFF02170B); label = "답하는 중" }
+        VoicePhase.IDLE -> { bg = c.accentBrush; label = "말하기" }
+        VoicePhase.LISTENING -> { bg = SolidColor(c.accentDeep); label = "듣는 중" }
+        VoicePhase.THINKING -> { bg = SolidColor(c.accent2); label = "찾는 중" }
+        VoicePhase.SPEAKING -> { bg = SolidColor(c.appBubble); label = "답하는 중" }
     }
+    val fg = Color.White
     Column(
         modifier
             .size(diameter)
+            .shadow(12.dp, CircleShape, clip = false)
             .clip(CircleShape)
             .background(bg)
-            .border(3.dp, c.mapBg.copy(alpha = 0.6f), CircleShape)
+            .border(4.dp, Color.White.copy(alpha = 0.45f), CircleShape)
             .pointerInput(Unit) {
                 detectTapGestures(onPress = {
                     press()
@@ -151,12 +175,13 @@ fun RoundIconButton(icon: IconKind, onClick: () -> Unit, modifier: Modifier = Mo
     Box(
         modifier
             .size(size)
+            .shadow(6.dp, CircleShape, clip = false)
             .clip(CircleShape)
             .background(c.surface)
             .border(1.dp, c.outline, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        AkkaIcon(icon, c.text, Modifier.size(size * 0.48f))
+        AkkaIcon(icon, c.accent2, Modifier.size(size * 0.48f))
     }
 }

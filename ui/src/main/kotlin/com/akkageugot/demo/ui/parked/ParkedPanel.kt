@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -45,6 +46,7 @@ import com.akkageugot.demo.contract.Candidate
 import com.akkageugot.demo.contract.Category
 import com.akkageugot.demo.contract.SavedPlace
 import com.akkageugot.demo.contract.SavedStatus
+import com.akkageugot.demo.contract.Side
 import com.akkageugot.demo.contract.UiAction
 import com.akkageugot.demo.ui.common.AkkaColors
 import com.akkageugot.demo.ui.common.AkkaIcon
@@ -53,32 +55,43 @@ import com.akkageugot.demo.ui.common.LocalAkkaColors
 import com.akkageugot.demo.ui.common.badgeColor
 import com.akkageugot.demo.ui.common.iconKind
 import com.akkageugot.demo.ui.common.labelKo
+import com.akkageugot.demo.ui.overlay.MirrorFrame
+import com.akkageugot.demo.ui.overlay.MirrorReflection
 
-/** 정차 화면 오른쪽 절반: 오늘 저장한 곳 목록과 후보 확인 */
+/** 정차 홈의 [저장] 탭: 오늘 저장한 곳 목록과 후보 확인 */
 @Composable
 fun ParkedPanel(
     saved: List<SavedPlace>,
     dispatch: (UiAction) -> Unit,
     onShowQr: (SavedPlace) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     nowMs: Long = System.currentTimeMillis()
 ) {
     val c = LocalAkkaColors.current
-    // 오늘 저장한 것만 (최근에 저장한 곳이 위로)
-    val today = remember(saved, nowMs / 60_000L) {
-        val start = startOfDay(nowMs)
-        saved.filter { it.createdAtMs >= start }.asReversed()
-    }
-    Column(modifier.fillMaxSize().background(c.mapBg).padding(horizontal = 20.dp)) {
-        Text(
-            "오늘 저장한 곳 ${today.size}개",
-            color = c.text, fontSize = 28.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 20.dp, bottom = 12.dp)
-        )
+    val today = remember(saved, nowMs / 60_000L) { todaySaved(saved, nowMs) }
+    Column(modifier.fillMaxSize()) {
+        Row(Modifier.padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(56.dp).clip(CircleShape).background(c.surface.copy(alpha = 0.86f))
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) {
+                AkkaIcon(IconKind.BACK, c.text, Modifier.size(30.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text("저장한 곳", color = c.onSky, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "오늘 ${today.size}곳 · 후보를 눌러 맞는 가게를 골라 주세요",
+                    color = c.onSky.copy(alpha = 0.85f), fontSize = 18.sp
+                )
+            }
+        }
         if (today.isEmpty()) {
             Text(
                 "아직 저장한 곳이 없어요.\n주행 중에 \"방금 거기 뭐야?\"라고 물어보세요.",
-                color = c.textDim, fontSize = 20.sp, modifier = Modifier.padding(top = 24.dp)
+                color = c.onSky, fontSize = 20.sp, modifier = Modifier.padding(top = 24.dp)
             )
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -90,31 +103,41 @@ fun ParkedPanel(
     }
 }
 
-private fun startOfDay(ms: Long): Long = java.util.Calendar.getInstance().apply {
-    timeInMillis = ms
-    set(java.util.Calendar.HOUR_OF_DAY, 0)
-    set(java.util.Calendar.MINUTE, 0)
-    set(java.util.Calendar.SECOND, 0)
-    set(java.util.Calendar.MILLISECOND, 0)
-}.timeInMillis
-
 @Composable
 private fun SavedItem(place: SavedPlace, dispatch: (UiAction) -> Unit, onShowQr: (SavedPlace) -> Unit) {
     val c = LocalAkkaColors.current
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(26.dp)
+    val chosen = place.chosen()
     Column(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(c.surfaceHigh)
+            .background(c.surface)
             .border(1.dp, c.outline, shape)
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                place.label, color = c.text, fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
-            )
+            // 거울 썸네일: 고른 가게(없으면 위치 핀)가 지나친 쪽에 비친다
+            MirrorFrame(Modifier.width(150.dp).height(62.dp), rim = 4.dp, elevation = 4.dp) {
+                MirrorReflection(chosen?.poi?.category, chosen?.side ?: Side.UNKNOWN)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    chosen?.poi?.name ?: "이 근처",
+                    color = c.text, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                val sideText = when (chosen?.side) {
+                    Side.LEFT -> " · 왼쪽에서 지나침"
+                    Side.RIGHT -> " · 오른쪽에서 지나침"
+                    else -> ""
+                }
+                Text(
+                    place.label + sideText, color = c.textDim, fontSize = 17.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
             StatusBadge(place.status)
         }
         if (place.utterance.isNotBlank()) {
@@ -156,7 +179,7 @@ private fun SavedItem(place: SavedPlace, dispatch: (UiAction) -> Unit, onShowQr:
 }
 
 @Composable
-private fun StatusBadge(status: SavedStatus) {
+internal fun StatusBadge(status: SavedStatus) {
     val c = LocalAkkaColors.current
     val (text, color) = when (status) {
         SavedStatus.CONFIRMED -> "확인됨" to c.ok
@@ -293,14 +316,14 @@ internal fun PanelButton(
     onClick: () -> Unit
 ) {
     val c = LocalAkkaColors.current
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(20.dp)
     val fg = if (primary) c.onAccent else c.text
     Row(
         modifier
             .height(60.dp)
             .clip(shape)
-            .background(if (primary) c.accent else c.surface)
-            .border(1.dp, if (primary) c.accent else c.outline, shape)
+            .then(if (primary) Modifier.background(c.accentBrush) else Modifier.background(c.surfaceHigh))
+            .border(1.dp, if (primary) Color.Transparent else c.outline, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,

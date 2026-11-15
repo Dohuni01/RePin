@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.akkageugot.demo.contract.Category
 import com.akkageugot.demo.ui.navi.DayMapPalette
@@ -15,7 +16,13 @@ import com.akkageugot.demo.ui.navi.NightMapPalette
 import com.akkageugot.demo.ui.navi.mapIconColor
 import com.akkageugot.demo.ui.navi.toMapIcon
 
-/** 화면 전체에서 쓰는 색. 기본은 야간, 주간은 설정에서 토글 */
+/**
+ * 화면 전체에서 쓰는 색. RePin "백미러" 디자인 (2026-11-15).
+ * 기본은 노을(주간) 테마, 밤 테마는 설정에서 토글.
+ * - accent: 산호색 (주 버튼, 말하기), accent2: 보라 (경로, 아이콘)
+ * - sky*: 노을 하늘 그라데이션 (정차 화면 배경, 거울 속 장면)
+ * - chrome*: 백미러 테두리 금속색
+ */
 @Immutable
 data class AkkaColors(
     val isDay: Boolean,
@@ -32,33 +39,67 @@ data class AkkaColors(
     val textDim: Color,
     val accent: Color,
     val onAccent: Color,
+    val accentDeep: Color,
+    val accent2: Color,
     val userBubble: Color,
+    val appBubble: Color,
+    val onAppBubble: Color,
     val ok: Color,
     val warn: Color,
     val danger: Color,
+    val skyTop: Color,
+    val skyMid: Color,
+    val skyLow: Color,
+    val skyBottom: Color,
+    val onSky: Color,
+    val chromeLight: Color,
+    val chromeDark: Color,
     /** 데모 내비 지도 색 (MapScene.kt) */
     val map: MapPalette
-)
+) {
+    /** 노을 하늘 (위 → 아래) */
+    val skyBrush: Brush get() = Brush.verticalGradient(listOf(skyTop, skyMid, skyLow, skyBottom))
+
+    /** 백미러 테두리 (빛 받은 금속) */
+    val chromeBrush: Brush
+        get() = Brush.linearGradient(
+            0f to chromeLight, 0.4f to Color(0xFFC9CFDA), 0.62f to chromeDark, 1f to Color(0xFFE6E9EF)
+        )
+
+    /** 말하기 버튼 등 산호색 그라데이션 */
+    val accentBrush: Brush get() = Brush.linearGradient(listOf(accent, accentDeep))
+}
 
 val NightColors = AkkaColors(
     isDay = false,
     mapBg = Color(NightMapPalette.ground),
     mapBlock = Color(NightMapPalette.building),
     mapRoad = Color(NightMapPalette.road),
-    route = Color(0xFF3D8BFF),
-    routePassed = Color(0xFF5B6675),
+    route = Color(NightMapPalette.route),
+    routePassed = Color(NightMapPalette.routePassed),
     car = Color(0xFFFFFFFF),
-    surface = Color(0xF2161C25),
-    surfaceHigh = Color(0xFF222B38),
-    outline = Color(0xFF3A4657),
-    text = Color(0xFFF4F7FB),
-    textDim = Color(0xFFA9B4C3),
-    accent = Color(0xFF4CC2FF),
-    onAccent = Color(0xFF04121C),
-    userBubble = Color(0xFF39424F),
+    surface = Color(0xEB1F1C38),
+    surfaceHigh = Color(0xFF2A2648),
+    outline = Color(0xFF3D3760),
+    text = Color(0xFFF4F0FB),
+    textDim = Color(0xFFB3AACB),
+    accent = Color(0xFFFF7A6B),
+    onAccent = Color(0xFFFFFFFF),
+    accentDeep = Color(0xFFE2555E),
+    accent2 = Color(0xFFB49BFF),
+    userBubble = Color(0xEB2A2648),
+    appBubble = Color(0xFF4A3D86),
+    onAppBubble = Color(0xFFFFFFFF),
     ok = Color(0xFF52D689),
     warn = Color(0xFFFFB84D),
     danger = Color(0xFFFF6B6B),
+    skyTop = Color(0xFF141230),
+    skyMid = Color(0xFF2F2860),
+    skyLow = Color(0xFF5A3F7E),
+    skyBottom = Color(0xFF8A5A82),
+    onSky = Color(0xFFFFFFFF),
+    chromeLight = Color(0xFFE9ECF2),
+    chromeDark = Color(0xFF6E7688),
     map = NightMapPalette
 )
 
@@ -69,25 +110,36 @@ val DayColors = AkkaColors(
     mapRoad = Color(DayMapPalette.road),
     route = Color(DayMapPalette.route),
     routePassed = Color(DayMapPalette.routePassed),
-    car = Color(0xFF10151C),
-    surface = Color(0xF7FFFFFF),
-    surfaceHigh = Color(0xFFF0F3F7),
-    outline = Color(0xFFBCC5D1),
-    text = Color(0xFF10151C),
-    textDim = Color(0xFF4D5968),
-    accent = Color(0xFF0B63CE),
+    car = Color(0xFF2B2D5C),
+    surface = Color(0xEBFFFFFF),
+    surfaceHigh = Color(0xFFFFFFFF),
+    outline = Color(0xFFE5D8E8),
+    text = Color(0xFF1E2140),
+    textDim = Color(0xFF5D5E80),
+    accent = Color(0xFFFF6F61),
     onAccent = Color(0xFFFFFFFF),
-    userBubble = Color(0xFFDDE2E9),
-    ok = Color(0xFF12894A),
-    warn = Color(0xFFB36A00),
-    danger = Color(0xFFC62828),
+    accentDeep = Color(0xFFE2555E),
+    accent2 = Color(0xFF7A5FA8),
+    userBubble = Color(0xEBFFFFFF),
+    appBubble = Color(0xFF2B2D5C),
+    onAppBubble = Color(0xFFFFFFFF),
+    ok = Color(0xFF15803D),
+    warn = Color(0xFFB45309),
+    danger = Color(0xFFD92D20),
+    skyTop = Color(0xFF2B2D5C),
+    skyMid = Color(0xFF7A5FA8),
+    skyLow = Color(0xFFF09A9A),
+    skyBottom = Color(0xFFFFC9A3),
+    onSky = Color(0xFFFFFFFF),
+    chromeLight = Color(0xFFFFFFFF),
+    chromeDark = Color(0xFF8E97A8),
     map = DayMapPalette
 )
 
 val LocalAkkaColors = staticCompositionLocalOf { NightColors }
 
 @Composable
-fun AkkaTheme(day: Boolean = false, content: @Composable () -> Unit) {
+fun AkkaTheme(day: Boolean = true, content: @Composable () -> Unit) {
     val c = if (day) DayColors else NightColors
     val scheme = if (day) {
         lightColorScheme(

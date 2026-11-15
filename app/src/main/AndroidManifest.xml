@@ -7,5 +7,5 @@
 
     <application
         android:name="com.akkageugot.demo.AkkaApp"
-        android:label="아까 그곳" />
+        android:label="RePin" />
 </manifest>
