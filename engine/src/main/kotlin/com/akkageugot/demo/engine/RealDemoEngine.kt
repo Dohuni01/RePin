@@ -575,9 +575,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         val line = if (named != null && building.size > 1)
             BuildingText.speech(side, com.akkageugot.demo.engine.core.Building(named.name, building))
         else if (building.size > 1)
-            "$sideWord 건물에 ${top.name}가 있어요. 같은 건물에 ${building[1].name}도 있어요."
+            BuildingText.nearbyPair(side, top.name, building[1].name)
         else
-            "$sideWord 에 ${top.name}가 있어요."
+            BuildingText.nearbyOne(side, top.name)
         speechOutput.speak(line)
         addVoiceLine(Speaker.APP, line)
         Log.i(TAG, "AskNearby: ${top.name} (건물 ${building.size}곳, ref=${refAlong.toInt()}m)")
@@ -679,7 +679,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             buttons = listOf(HeadsUpButton.VISIT, HeadsUpButton.DISMISS)
         )
         revisitClearDeadlineMs = nowReal + ANSWER_TIMEOUT_MS
-        val line = "지난번 저장한 ${poi.name}가 ${hit.aheadM.toInt()}m 앞 ${sideWord}이에요. 들를까요?"
+        val where = listOf("${hit.aheadM.toInt()}m 앞", sideWord).filter { it.isNotEmpty() }.joinToString(" ")
+        val line = "지난번 저장한 ${poi.name}${BuildingText.subjectParticle(poi.name)} ${where}${BuildingText.copula(where)}. 들를까요?"
         speechOutput.speak(line)
         addVoiceLine(Speaker.APP, line)
         Log.i(TAG, "REVISIT: ${poi.name} ${hit.aheadM.toInt()}m 앞")

@@ -275,4 +275,39 @@ class SideAskAndBuildingTest {
         assertTrue(speech(effects).isEmpty())
         assertEquals(listOf(Side.UNKNOWN), nearby(effects))
     }
+
+    @Test
+    fun `되묻기 없이 오른쪽만 말하면 오른쪽 건물을 바로 답한다`() {
+        val m = machine(FakeBacktrack(bothSides))
+        val effects = say(m, "오른쪽", 10_000L)
+        assertTrue(speech(effects).isEmpty())
+        assertEquals(listOf(Side.RIGHT), nearby(effects))
+        assertFalse(m.isAskingSide)
+    }
+
+    @Test
+    fun `되묻기 없이 오른쪽이요 왼쪽도 그쪽으로 답한다`() {
+        val m = machine(FakeBacktrack(bothSides))
+        assertEquals(listOf(Side.RIGHT), nearby(say(m, "오른쪽이요", 10_000L)))
+        assertEquals(listOf(Side.LEFT), nearby(say(m, "왼쪽", 20_000L)))
+    }
+
+    @Test
+    fun `좌우가 든 긴 혼잣말은 무시한다`() {
+        val m = machine(FakeBacktrack(bothSides))
+        val effects = say(m, "오른쪽 차선 막혔네", 10_000L)
+        assertTrue(nearby(effects).isEmpty())
+        assertTrue(speech(effects).isEmpty())
+        assertFalse(m.isAskingSide)
+    }
+
+    @Test
+    fun `되묻는 중의 오른쪽은 대답으로 처리한다`() {
+        val m = machine(FakeBacktrack(bothSides))
+        say(m, "방금 지나친 거 뭐야?", 10_000L)
+        assertTrue(m.isAskingSide)
+        val effects = say(m, "오른쪽", 13_000L)
+        assertTrue(nearby(effects).isEmpty())
+        assertEquals(listOf("달빛제과"), effects.filterIsInstance<DialogEffect.ShowHeadsUp>().map { it.headsUp.title })
+    }
 }

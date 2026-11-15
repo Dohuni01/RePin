@@ -198,6 +198,30 @@ fun NaviPillButton(
     }
 }
 
+/** 아이콘 없는 알약 버튼 ([왼쪽] [오른쪽]) */
+@Composable
+fun NaviTextPillButton(
+    text: String,
+    container: Color,
+    content: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        modifier
+            .shadow(8.dp, shape, clip = false)
+            .clip(shape)
+            .background(container)
+            .border(2.dp, Color.White.copy(alpha = 0.40f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = content, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
 /** 큰 원형 아이콘 버튼 (저장 목록, 설정) */
 @Composable
 fun RoundIconButton(icon: IconKind, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 76.dp) {

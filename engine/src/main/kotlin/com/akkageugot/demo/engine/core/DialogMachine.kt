@@ -78,6 +78,10 @@ class DialogMachine(
 
     enum class State { IDLE, LISTENING, THINKING, ANSWERED }
 
+    private companion object {
+        const val BARE_SIDE_MAX_LEN = 6
+    }
+
     var state: State = State.IDLE
         private set
 
@@ -165,7 +169,10 @@ class DialogMachine(
                     state = State.IDLE
                     effects += DialogEffect.SetPhase(VoicePhase.IDLE)
                 }
-            IntentType.MEMO -> {
+            IntentType.MEMO -> if (isBareSide(event.text)) {
+                // "오른쪽", "왼쪽이요"만 말하면 그쪽 "옆에 뭐 있어?"로 바로 답한다
+                effects += askNearby(IntentParser.parseSide(event.text))
+            } else {
                 // 메모/미분류 발화: 데모 범위에서는 무시하고 대기 상태로 돌아간다
                 state = if (hasActiveAnswer()) State.ANSWERED else State.IDLE
                 effects += DialogEffect.SetPhase(VoicePhase.IDLE)
@@ -274,7 +281,7 @@ class DialogMachine(
         val name = top.candidate.poi.name
         val inBuilding = building?.let { " ${it.name}에 있어요." } ?: ""
         val text = when (result.confidence) {
-            Confidence.HIGH -> "${name}요.$inBuilding 저장할까요, 들렀다 갈까요?"
+            Confidence.HIGH -> "${BuildingText.nameAnswer(name)}.$inBuilding 저장할까요, 들렀다 갈까요?"
             else -> {
                 val second = result.candidates.getOrNull(1)
                 if (second != null) "아마 $name 같아요. 옆에 ${second.candidate.poi.name}도 있었어요."
@@ -377,6 +384,10 @@ class DialogMachine(
             DialogEffect.SetPhase(VoicePhase.IDLE)
         )
     }
+
+    /** 좌우 한 마디만 한 발화 ("오른쪽", "왼쪽이요"). 공백 빼고 6자 이하 */
+    private fun isBareSide(text: String): Boolean =
+        text.replace(" ", "").trim().length <= BARE_SIDE_MAX_LEN && IntentParser.parseSide(text) != Side.UNKNOWN
 
     private fun needsSide(intent: ParsedIntent): Boolean {
         val relevant = result.candidates.filter { intent.category == null || it.candidate.poi.category == intent.category }

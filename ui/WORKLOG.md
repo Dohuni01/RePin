@@ -2,6 +2,21 @@
 
 최신 항목이 위에 온다. 2026-11-15부터 앱 이름은 RePin이다.
 
+## 2026-11-15 — 앱 아이콘(되돌아 찍는 핀)
+- 사용자가 시안 2번 "되돌아 찍는 핀"을 골랐다: 산호색 그라데이션 배경(#FF8A6B → #E2555E), 핀을 감싸고 뒤로 도는 흰 화살표, 남색(#2B2D5C) 핀.
+- minSdk 34라 적응형 아이콘(벡터)만 둔다. 비트맵 mipmap 없음. 단색(테마 아이콘)은 전경을 그대로 쓴다.
+- 파일:
+  - `app/src/main/res/drawable/ic_launcher_background.xml`
+  - `app/src/main/res/drawable/ic_launcher_foreground.xml`
+  - `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`, `ic_launcher_round.xml`
+  - `app/src/main/AndroidManifest.xml`: `android:icon`, `android:roundIcon` 추가
+
+## 2026-11-15 — "옆에 뭐 있어?" 버튼 복원 + 오른쪽/왼쪽 버튼
+- 실시간 테스트용으로 주행 지도의 보라색 "옆에 뭐 있어?" 버튼을 다시 넣었다(사용자 요청). 자리는 시나리오 중단 버튼 아래, 홈 버튼 위.
+- 그 아래에 [왼쪽] [오른쪽] 알약 버튼(`navi/NaviTextPillButton`, 아이콘 없음). 누르면 말로 대답한 것과 같은 경로(`MicPressed` → `TypedUtterance("오른쪽")` → `MicReleased`, adb say와 같은 순서)로 보낸다.
+- `core/DialogMachine.kt`: 되묻는 중이 아닐 때 "오른쪽", "왼쪽이요"처럼 좌우만 말하면(공백 빼고 6자 이하) 그쪽 "옆에 뭐 있어?"로 바로 답한다. 그래서 [오른쪽]만 눌러도 오른쪽 건물을 알려 준다. 되묻는 중이면 기존대로 대답으로 처리한다. "오른쪽 차선 막혔네" 같은 긴 말은 무시.
+- 안내 문구 띄어쓰기·조사 정리: "왼쪽 에 꽃과바람가 있어요." → "왼쪽에 꽃과바람이 있어요." (`BuildingText.nearbyOne/nearbyPair/nameAnswer`, 받침에 맞춰 이/가, 이요/요). 다시 지나감 안내("지난번 저장한 …이/가 …m 앞 오른쪽이에요")도 같은 조사 함수를 쓴다.
+
 ## 2026-11-15 — "옆에 뭐 있어?" 좌우 되묻기, 시연 시나리오 다시 짜기 (feature/side-and-building)
 - "옆에 뭐 있어?"(말하기든 지도 버튼이든)는 먼저 "오른쪽이요, 왼쪽이요?"라고 묻고, 대답한 쪽의 건물(가게)을 알려 준다. 기준점은 처음 물어본 순간이다. 처음부터 "오른쪽에 뭐 있어?", "왼쪽에 뭐가 있어?"라고 하면 묻지 않고 바로 답한다. 대답이 없거나 못 알아들으면 가장 가까운 건물로 답한다. 그쪽 80m 안에 가게가 없으면 "오른쪽에는 가게가 안 보여요."라고 말한다.
 - `core/IntentParser.kt`: `IntentType.NEARBY` 추가 ("뭐 있어", "뭐가 있어", "뭐 있지", "뭐 있나", 띄어쓰기 무시). 거절/들르기/저장/질문이 우선.
