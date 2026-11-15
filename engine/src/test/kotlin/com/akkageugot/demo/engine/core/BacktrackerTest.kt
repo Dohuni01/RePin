@@ -97,6 +97,23 @@ class BacktrackerTest {
         assertEquals(42.0, top.passedM, 5.0) // 400m 가게, 442m에서 질문
     }
 
+    @Test
+    fun `볕들빌딩 앞 카페 질문 - 양쪽에 카페가 있고 오른쪽으로 찾으면 볕드는카페`() {
+        // 시나리오3: 볕드는카페(b01s0, 480m 오른쪽)를 지나 514m에서 질문
+        val r = askAt(300.0, 514.0, speed50, "방금 지나친 카페 뭐야?")
+        val sides = r.candidates.filter { it.candidate.poi.category == com.akkageugot.demo.contract.Category.CAFE }
+            .map { it.candidate.side }.toSet()
+        assertTrue(com.akkageugot.demo.contract.Side.RIGHT in sides)
+        assertTrue(com.akkageugot.demo.contract.Side.LEFT in sides)
+
+        val trail = TestFixtures.drive(300.0, 514.0 + speed50, speed50)
+        val t0 = TestFixtures.timeAt(300.0, 514.0, speed50)
+        val right = backtracker.search(
+            trail, t0, IntentParser.parse("방금 지나친 카페 뭐야?").copy(side = com.akkageugot.demo.contract.Side.RIGHT)
+        )
+        assertEquals("b01s0", right.candidates.first().candidate.poi.id)
+    }
+
     private fun corridorLength(r: BacktrackResult): Double {
         var sum = 0.0
         for (i in 0 until r.corridor.size - 1) {

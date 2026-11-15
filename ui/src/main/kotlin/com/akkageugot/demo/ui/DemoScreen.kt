@@ -207,14 +207,6 @@ fun NaviPane(
                     onClick = { dispatch(UiAction.StopScenario) }
                 )
             }
-            // 지도에서 언제든 "옆에 뭐 있어?"로 지금 옆/지나온 건물을 추천받는다
-            NaviPillButton(
-                text = "옆에 뭐 있어?",
-                icon = IconKind.EYE,
-                container = c.accent2,
-                content = androidx.compose.ui.graphics.Color.White,
-                onClick = { dispatch(UiAction.AskNearby) }
-            )
             if (parked) {
                 // 정차 중 지도 보기에서 홈(거울 앨범)으로 돌아가기
                 RoundIconButton(IconKind.HOME, onOpenHome)

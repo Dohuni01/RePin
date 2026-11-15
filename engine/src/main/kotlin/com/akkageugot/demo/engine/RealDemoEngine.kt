@@ -33,6 +33,7 @@ import com.akkageugot.demo.engine.core.TrailSample
 import com.akkageugot.demo.contract.HeadsUpButton
 import com.akkageugot.demo.contract.HeadsUpKind
 import com.akkageugot.demo.engine.core.CategoryLabels
+import com.akkageugot.demo.engine.core.BuildingText
 import com.akkageugot.demo.engine.data.ScenarioData
 import com.akkageugot.demo.engine.data.ScenarioLoader
 import com.akkageugot.demo.engine.data.ScenarioStepJson
@@ -52,6 +53,7 @@ import com.akkageugot.demo.engine.platform.pleos.PleosSpeechInput
 import com.akkageugot.demo.engine.platform.pleos.PleosSpeechOutput
 import com.akkageugot.demo.engine.core.LocalProjection
 import com.akkageugot.demo.engine.sim.SimulatedDrive
+import com.akkageugot.demo.engine.sim.TrailPrefill
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -121,6 +123,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private var etaDelayMin = 0
     private var lastRevisitCheckMs = 0L
     private val scenarioSteps = mutableListOf<StepRuntime>()
+    private var presetNoAsk = false // 시나리오 자동 발화 중 단계에 askSide가 없으면 좌우를 되묻지 않는다
+    private var nearbyRefAlongM = 0.0 // "옆에 뭐 있어?"를 처음 물어본 순간의 기준 along
 
     private data class TimedVoiceLine(val line: VoiceLine, val removeAtMs: Long)
 
@@ -152,7 +156,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             currentPos = { drive.pos },
             nowMs = { System.currentTimeMillis() },
             labelFor = { EngineClock.savedLabel(it) },
-            newId = { "sp-${idSeq++}" }
+            newId = { "sp-${idSeq++}" },
+            buildingOf = { data.buildingOf(it) },
+            askSideEnabled = { !presetNoAsk }
         )
 
         vehicle.start()
@@ -262,7 +268,10 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             is UiAction.SetGear -> drive.gear = action.gear
             is UiAction.RunScenario -> startScenario(action.n)
             is UiAction.StopScenario -> stopScenario()
-            is UiAction.AskNearby -> askNearby()
+            is UiAction.AskNearby -> {
+                nearbyRefAlongM = currentNearbyRef()
+                apply(dialog.onEvent(DialogEvent.NearbyPressed(simClockMs)))
+            }
             is UiAction.SetSdkEnabled -> {
                 settings = settings.copy(useSdk = settings.useSdk + (action.key to action.enabled))
                 persistSettings()
@@ -292,6 +301,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
 
             is UiAction.MicPressed -> {
                 addVoiceLine(Speaker.USER, "…") // 듣는 중 표시
+                if (!dialog.isAskingSide) nearbyRefAlongM = currentNearbyRef()
                 apply(dialog.onEvent(DialogEvent.UtteranceStarted(simClockMs)))
                 speechInput.start()
             }
@@ -380,6 +390,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 is DialogEffect.StartAnswerTimer -> answerDeadlineMs = now + ANSWER_TIMEOUT_MS
                 is DialogEffect.CancelAnswerTimer -> answerDeadlineMs = null
                 is DialogEffect.SetIntentJson -> lastIntentJson = e.json
+                is DialogEffect.AnswerNearby -> answerNearby(e.side)
             }
         }
     }
@@ -458,12 +469,23 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private fun startScenario(n: Int) {
         val scenario = data.scenarios.firstOrNull { it.n == n } ?: return
         drive.setRoute(data.route.points)
-        drive.startAt(scenario.startDistanceAlongRouteM, Gear.D)
+        // prefillFromM이 있으면 그 지점부터 출발 지점까지 달린 기록을 미리 만들고, 그 속도 그대로 출발한다
+        val prefill = scenario.prefillFromM?.let { from ->
+            TrailPrefill.build(
+                routePoints = data.route.points,
+                fromM = from,
+                toM = scenario.startDistanceAlongRouteM,
+                targetSpeedKmh = drive.targetSpeedKmh,
+                endClockMs = simClockMs
+            )
+        }
+        drive.startAt(scenario.startDistanceAlongRouteM, Gear.D, prefill?.endSpeedMps ?: 0.0)
         if (scenario.timeScale > 0) {
             drive.timeScale = scenario.timeScale
             settings = settings.copy(timeScale = scenario.timeScale) // 화면 표시용(저장은 안 함)
         }
         trail.clear()
+        prefill?.samples?.forEach { trail.add(it) }
         lastTrailSimMs = simClockMs - TRAIL_INTERVAL_MS
         currentWaypoint = null
         etaDelayMin = 0
@@ -472,13 +494,14 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         lastResult = BacktrackResult.EMPTY
         revisitPoi = null
         revisitClearDeadlineMs = null
+        revisitWatcher.reset() // 리허설로 같은 날 여러 번 돌려도 "다시 지나감" 알림이 다시 뜨도록 시나리오마다 새로 센다
         nearbyPoi = null
         nearbyClearDeadlineMs = null
         scenarioSteps.clear()
         scenario.steps.forEach { scenarioSteps += StepRuntime(it) }
         runningScenario = n
         navigation.requestDestination("목적지")
-        Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m, steps=${scenario.steps.size}")
+        Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m, prefill=${prefill?.samples?.size ?: 0}s, speed=${"%.1f".format((prefill?.endSpeedMps ?: 0.0) * 3.6)}km/h, steps=${scenario.steps.size}")
     }
 
     /** 지도 "시나리오 중단" 버튼: 자동재생 스크립트와 카드를 비우고, 그 자리에 차를 세운다(기어 P) */
@@ -495,19 +518,40 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     }
 
     /**
-     * 지도 "옆에 뭐 있어?" 버튼. 속도가 빠를수록 더 뒤의 건물을 본다
-     * (버튼을 누른 순간엔 그 가게가 이미 지나가 있으므로).
+     * "옆에 뭐 있어?"의 기준점. 속도가 빠를수록 더 뒤의 건물을 본다
+     * (물어본 순간엔 그 가게가 이미 지나가 있으므로).
      */
-    private fun askNearby() {
-        if (data.pois.isEmpty()) return
+    private fun currentNearbyRef(): Double {
         val lookback = (drive.speedMps * NEARBY_REACTION_SEC).coerceIn(0.0, 120.0)
-        val refAlong = (drive.distanceAlongM - lookback).coerceIn(0.0, drive.route.lengthM)
+        return (drive.distanceAlongM - lookback).coerceIn(0.0, drive.route.lengthM)
+    }
 
-        // 기준점에 along이 가장 가까운 가게를 중심으로 ±18m 안을 한 건물로 본다
-        val center = data.pois.minByOrNull { abs(alongOf(it) - refAlong) } ?: return
+    /**
+     * "옆에 뭐 있어?" 답. 처음 물어본 순간의 기준점에서 그쪽(side) 건물을 찾는다.
+     * UNKNOWN이면 양쪽 중 가장 가까운 건물
+     */
+    private fun answerNearby(requested: Side) {
+        if (data.pois.isEmpty()) return
+        val refAlong = nearbyRefAlongM
+        val pool = if (requested == Side.UNKNOWN) data.pois else data.pois.filter { sideOf(it) == requested }
+
+        // 기준점에 along이 가장 가까운 가게를 중심으로 ±18m 안(같은 쪽)을 한 건물로 본다
+        val center = pool.minByOrNull { abs(alongOf(it) - refAlong) }
+            ?.takeIf { abs(alongOf(it) - refAlong) <= NEARBY_MAX_GAP_M }
+        if (center == null) {
+            headsUp = null
+            nearbyPoi = null
+            val line = "${CategoryLabels.korean(requested)}에는 가게가 안 보여요."
+            speechOutput.speak(line)
+            addVoiceLine(Speaker.APP, line)
+            Log.i(TAG, "AskNearby: $requested 쪽 가게 없음 (ref=${refAlong.toInt()}m)")
+            return
+        }
         val centerAlong = alongOf(center)
-        val building = data.pois
-            .filter { abs(alongOf(it) - centerAlong) <= 18.0 }
+        val centerSide = sideOf(center)
+        val named = data.buildingOf(center)
+        val building = (named?.members
+            ?: pool.filter { abs(alongOf(it) - centerAlong) <= 18.0 && sideOf(it) == centerSide })
             .sortedWith(compareByDescending<Poi> { it.open }.thenBy { it.id })
         if (building.isEmpty()) return
 
@@ -520,14 +564,17 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         headsUp = HeadsUp(
             id = "hu-${idSeq++}",
             kind = HeadsUpKind.ANSWER,
-            title = top.name,
-            subtitle = listOf(CategoryLabels.korean(top.category), sideWord, "옆 건물").joinToString(" · ") + extra,
+            title = named?.name ?: top.name,
+            subtitle = if (named != null) BuildingText.subtitle(side, com.akkageugot.demo.engine.core.Building(named.name, building), null)
+            else listOf(CategoryLabels.korean(top.category), sideWord, "옆 건물").joinToString(" · ") + extra,
             category = top.category,
             buttons = listOf(HeadsUpButton.SAVE, HeadsUpButton.VISIT)
         )
         nearbyClearDeadlineMs = System.currentTimeMillis() + ANSWER_TIMEOUT_MS
-        lastIntentJson = """{"type":"NEARBY","category":null,"side":"$side","timeOffsetSec":0}"""
-        val line = if (building.size > 1)
+        lastIntentJson = """{"type":"NEARBY","category":null,"side":"$requested","timeOffsetSec":0}"""
+        val line = if (named != null && building.size > 1)
+            BuildingText.speech(side, com.akkageugot.demo.engine.core.Building(named.name, building))
+        else if (building.size > 1)
             "$sideWord 건물에 ${top.name}가 있어요. 같은 건물에 ${building[1].name}도 있어요."
         else
             "$sideWord 에 ${top.name}가 있어요."
@@ -587,20 +634,26 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             val fireAt = rt.fireAtSimMs
             if (fireAt != null && simClockMs >= fireAt) {
                 rt.fired = true
-                firePreset(rt.step.preset)
+                firePreset(rt.step.preset, rt.step.askSide)
             }
         }
     }
 
     /** adb say와 동일 경로로 프리셋 발화 자동 입력 */
-    private fun firePreset(preset: Int) {
+    private fun firePreset(preset: Int, askSide: Boolean = false) {
         val text = com.akkageugot.demo.engine.demo.DemoCommandReceiver.PRESETS.getOrNull(preset - 1) ?: return
         Log.i(TAG, "시나리오 자동 발화 preset $preset: $text")
         addVoiceLine(Speaker.USER, "…")
-        apply(dialog.onEvent(DialogEvent.UtteranceStarted(simClockMs)))
-        speechInput.start()
-        speechInput.feedUtterance(text)
-        speechInput.stop()
+        presetNoAsk = !askSide
+        try {
+            if (!dialog.isAskingSide) nearbyRefAlongM = currentNearbyRef()
+            apply(dialog.onEvent(DialogEvent.UtteranceStarted(simClockMs)))
+            speechInput.start()
+            speechInput.feedUtterance(text)
+            speechInput.stop()
+        } finally {
+            presetNoAsk = false
+        }
     }
 
     /** CONFIRMED 저장 장소가 300m 앞·경로 60m 이내면 REVISIT 안내 (engine/PROMPT.md 6절) */
@@ -712,6 +765,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         const val TRAIL_INTERVAL_MS = 1000L
         const val ANSWER_TIMEOUT_MS = 6000L
         const val NEARBY_REACTION_SEC = 1.8
+        const val NEARBY_MAX_GAP_M = 80.0
         const val VOICE_LINE_MS = 4000L
         const val MAX_VOICE_LINES = 2
     }

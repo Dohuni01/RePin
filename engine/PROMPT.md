@@ -70,7 +70,7 @@ probe/EngineProbeActivity   AppState 텍스트 덤프 + 버튼(말하기, 프리
 ```
 
 ## 5. 시나리오 데이터 (`engine/src/main/assets/scenarios.json`)
-- `route`: 서울 시내 실제 도로를 따라가는 위경도 점 목록 (약 3km, 직진 + 우회전 1 + 좌회전 1)
+- `route`: 서울 시내 실제 도로를 따라가는 위경도 점 목록 (약 4km, 직진 + 우회전 1 + 좌회전 1, 마지막 1km는 가게 없는 직선이라 답 카드가 도착 전에 닫힌다)
   → `Geo`가 경로 시작점 기준 equirectangular 근사로 로컬 미터 변환
 - `pois`: 좌표 대신 경로 기준으로 정의하고 앱이 좌표를 계산
   `{ id, name, category, distanceAlongRouteM, side: "right"|"left", offsetM(12~35), open }`
@@ -157,7 +157,7 @@ IDLE → LISTENING → THINKING → ANSWERED(headsUp 표시, 6초 대기)
   - `--es cmd gear --es value P|D`
   - `--es cmd speed --ei kmh 50`
 - `say`는 MicPressed → TypedUtterance → MicReleased와 똑같은 경로로 처리 (t0 = 명령 받은 순간)
-- `scripts/` 폴더에 `.bat` 생성 (한글 금지): `say1.bat`~`say6.bat`, `scenario1.bat`~`scenario5.bat`, `park.bat`, `drive.bat`
+- `scripts/` 폴더에 `.bat` 생성 (한글 금지): `say1.bat`~`say11.bat`, `scenario1.bat`~`scenario6.bat`, `park.bat`, `drive.bat`
   ```
   adb shell am broadcast -n com.akkageugot.demo/com.akkageugot.demo.engine.demo.DemoCommandReceiver -a com.akkageugot.demo.DEMO --es cmd say --ei preset 1
   ```
@@ -182,7 +182,7 @@ IDLE → LISTENING → THINKING → ANSWERED(headsUp 표시, 6초 대기)
 | 6 | `feature/engine-scenario` | RevisitWatcher + 시나리오 1~5 자동 재생 + 저장 영속화 |
 
 ## 11. 완료 기준
-- [ ] realDebug + EngineProbeActivity에서 `scenario1.bat`~`scenario5.bat`이 끝까지 돈다 (logcat으로 확인)
+- [ ] realDebug + EngineProbeActivity에서 `scenario1.bat`~`scenario6.bat`이 끝까지 돈다 (logcat으로 확인)
 - [ ] Backtracker 테스트 통과, 속도에 따라 corridor 길이가 바뀐다
 - [ ] 어떤 SDK가 실패해도 목업으로 대체되어 끝까지 돈다
 - [ ] `mirrorToRealNavi = true`일 때 NaviHelper 콜백이 로그에 찍힌다

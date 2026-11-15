@@ -6,7 +6,7 @@ AI에게: 양쪽 단계별 PR은 이미 main에 merge된 상태다. 여기서는
 1. `CLAUDE.md`, `docs/CONTRACT.md`, `MERGE_NOTES.md`, `engine/PROMPT.md`, `ui/PROMPT.md`를 읽는다
 2. `MERGE_NOTES.md`의 요청을 "반영됨 / 미반영 / 필요 없음"으로 정리해서 보고한다
 3. Build Variant `realDebug`로 에뮬레이터 실행
-4. `scripts\scenario1.bat`~`scenario5.bat`을 순서대로 실행하며 확인
+4. `scripts\scenario1.bat`~`scenario6.bat`을 순서대로 실행하며 확인
    - 데모 내비에서 차가 움직이고 TBT, 남은 거리, 도착 시각이 맞게 바뀌는지
    - 카드와 말풍선이 뜨고 6초 / 4초 뒤 사라지는지
    - 들르기 → 경유지 핀, 경로 변경, "+N분"

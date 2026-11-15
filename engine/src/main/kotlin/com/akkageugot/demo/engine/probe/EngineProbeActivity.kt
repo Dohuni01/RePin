@@ -87,7 +87,7 @@ class EngineProbeActivity : Activity() {
         ))
 
         col.addView(label("시나리오"))
-        col.addView(row(*(1..5).map { n ->
+        col.addView(row(*(1..6).map { n ->
             button("$n") { dispatch(UiAction.RunScenario(n)) }
         }.toTypedArray()))
 
