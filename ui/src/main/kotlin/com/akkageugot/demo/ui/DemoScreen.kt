@@ -67,6 +67,8 @@ fun DemoScreen(
     // 발표 흐름: 정차 상태의 기본 화면은 설정(시나리오 고르는 곳). 첫 실행과 시나리오 중단 후 여기로 온다.
     var view by remember { mutableStateOf(ParkedView.SETTINGS) }
     var qrSavedId by remember { mutableStateOf<String?>(null) }
+    // 주행 중 홈 버튼으로 연 홈. 차는 계속 달리고, 홈의 [지도]를 누르면 달리던 내비로 돌아간다
+    var homeWhileDriving by remember { mutableStateOf(false) }
     var showDevDialog by remember { mutableStateOf(false) }
     // 시나리오가 시작되면 오버레이를 자동으로 닫는다
     LaunchedEffect(state.runningScenario) {
@@ -77,15 +79,19 @@ fun DemoScreen(
             // 주행이 끝나(시나리오 중단·도착) 다시 정차하면 설정 시나리오 화면으로 돌아온다
             view = ParkedView.SETTINGS
             qrSavedId = null
+            homeWhileDriving = false
         }
     }
 
     Box(modifier.fillMaxSize().background(c.mapBg)) {
-        if (parked && view != ParkedView.MAP) {
+        if ((parked || homeWhileDriving) && view != ParkedView.MAP) {
             ParkedHome(
                 state = state,
                 view = view,
-                onView = { view = it },
+                onView = {
+                    view = it
+                    if (it == ParkedView.MAP) homeWhileDriving = false
+                },
                 dispatch = dispatch,
                 onShowQr = { qrSavedId = it.id },
                 settingsContent = {
@@ -98,7 +104,11 @@ fun DemoScreen(
                 flags = flags,
                 dispatch = dispatch,
                 parked = parked,
-                onOpenHome = { view = ParkedView.HOME },
+                onOpenHome = {
+                    // 주행 중이어도 차는 그대로 달린다. 홈만 띄우고, [지도]를 누르면 달리던 내비로 돌아온다
+                    if (!parked) homeWhileDriving = true
+                    view = ParkedView.HOME
+                },
                 onOpenSettings = { showDevDialog = true },
                 modifier = Modifier.fillMaxSize()
             )
@@ -106,7 +116,7 @@ fun DemoScreen(
     }
 
     // QR은 정차 중에만. 기어가 D가 되면 parked 조건으로 즉시 사라진다
-    val qrPlace = if (parked) state.saved.firstOrNull { it.id == qrSavedId } else null
+    val qrPlace = if (parked || homeWhileDriving) state.saved.firstOrNull { it.id == qrSavedId } else null
     if (qrPlace != null) {
         QrDialog(qrPlace, onDismiss = { qrSavedId = null })
     }
@@ -209,6 +219,8 @@ fun NaviPane(
                 // 정차 중 지도 보기에서 홈(거울 앨범)으로 돌아가기
                 RoundIconButton(IconKind.HOME, onOpenHome)
             } else {
+                // 주행 중 홈 버튼: 차는 계속 달리고 홈만 띄운다
+                RoundIconButton(IconKind.HOME, onOpenHome)
                 // 주행 중 설정·시나리오 패널 열기
                 RoundIconButton(IconKind.GEAR, onClick = onOpenSettings)
             }

@@ -287,6 +287,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             is UiAction.NavigateTo -> navigateToSaved(action.savedId)
             is UiAction.SelectCandidate -> selectCandidate(action.savedId, action.poiId)
             is UiAction.UpdateMemo -> updateMemo(action.savedId, action.memo)
+            is UiAction.DeleteSaved -> deleteSaved(action.id)
+            is UiAction.ClearAllSaved -> clearTodaySaved()
 
             is UiAction.MicPressed -> {
                 addVoiceLine(Speaker.USER, "…") // 듣는 중 표시
@@ -319,6 +321,22 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         if (i < 0) return
         saved[i] = saved[i].copy(memo = memo)
         savedRepo.save(saved)
+    }
+
+    /** 저장 목록의 X 버튼: 그 장소 하나를 지운다 */
+    private fun deleteSaved(savedId: String) {
+        if (saved.removeAll { it.id == savedId }) savedRepo.save(saved)
+    }
+
+    /** 저장 목록의 "전체 삭제": 화면 확인 창 문구대로 오늘 저장한 곳만 지운다 */
+    private fun clearTodaySaved() {
+        val start = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        if (saved.removeAll { it.createdAtMs >= start }) savedRepo.save(saved)
     }
 
     private fun handleRevisitClick(button: HeadsUpButton) {
@@ -463,8 +481,9 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m, steps=${scenario.steps.size}")
     }
 
-    /** 지도 "시나리오 중단" 버튼: 자동재생 스크립트와 카드를 비운다 (차는 그대로 둔다) */
+    /** 지도 "시나리오 중단" 버튼: 자동재생 스크립트와 카드를 비우고, 그 자리에 차를 세운다(기어 P) */
     private fun stopScenario() {
+        drive.startAt(drive.distanceAlongM, Gear.P)
         scenarioSteps.clear()
         runningScenario = null
         headsUp = null
@@ -472,7 +491,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         nearbyPoi = null
         nearbyClearDeadlineMs = null
         voicePhase = VoicePhase.IDLE
-        Log.i(TAG, "StopScenario: 자동재생 중단")
+        Log.i(TAG, "StopScenario: 자동재생 중단, 기어 P")
     }
 
     /**
