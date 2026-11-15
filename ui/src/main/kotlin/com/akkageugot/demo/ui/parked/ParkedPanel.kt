@@ -70,6 +70,7 @@ fun ParkedPanel(
 ) {
     val c = LocalAkkaColors.current
     val today = remember(saved, nowMs / 60_000L) { todaySaved(saved, nowMs) }
+    var showClearConfirm by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize()) {
         Row(Modifier.padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -93,7 +94,7 @@ fun ParkedPanel(
                         .height(56.dp)
                         .clip(RoundedCornerShape(28.dp))
                         .background(c.surface.copy(alpha = 0.86f))
-                        .clickable { dispatch(UiAction.ClearAllSaved) }
+                        .clickable { showClearConfirm = true }
                         .padding(horizontal = 18.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -101,6 +102,35 @@ fun ParkedPanel(
                 }
             }
         }
+    if (showClearConfirm) {
+        Dialog(onDismissRequest = { showClearConfirm = false }) {
+            val shape = RoundedCornerShape(24.dp)
+            Column(
+                Modifier
+                    .clip(shape)
+                    .background(c.surfaceHigh)
+                    .border(1.dp, c.outline, shape)
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("저장한 곳 전체 삭제", color = c.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "오늘 저장한 ${today.size}곳이 모두 삭제됩니다.\n계속할까요?",
+                    color = c.textDim, fontSize = 18.sp
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PanelButton("취소", null, primary = false, modifier = Modifier.weight(1f)) {
+                        showClearConfirm = false
+                    }
+                    PanelButton("삭제", null, primary = true, modifier = Modifier.weight(1f)) {
+                        dispatch(UiAction.ClearAllSaved)
+                        showClearConfirm = false
+                    }
+                }
+            }
+        }
+    }
         if (today.isEmpty()) {
             Text(
                 "아직 저장한 곳이 없어요.\n주행 중에 \"방금 거기 뭐야?\"라고 물어보세요.",

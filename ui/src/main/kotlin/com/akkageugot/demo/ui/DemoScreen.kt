@@ -68,6 +68,10 @@ fun DemoScreen(
     var view by remember { mutableStateOf(ParkedView.SETTINGS) }
     var qrSavedId by remember { mutableStateOf<String?>(null) }
     var showDevDialog by remember { mutableStateOf(false) }
+    // 시나리오가 시작되면 오버레이를 자동으로 닫는다
+    LaunchedEffect(state.runningScenario) {
+        if (state.runningScenario != null) showDevDialog = false
+    }
     LaunchedEffect(parked) {
         if (!parked) {
             // 주행이 끝나(시나리오 중단·도착) 다시 정차하면 설정 시나리오 화면으로 돌아온다
