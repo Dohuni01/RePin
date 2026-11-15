@@ -144,6 +144,10 @@ sealed interface UiAction {
     data class RunScenario(val n: Int) : UiAction
     data class SetSdkEnabled(val key: String, val enabled: Boolean) : UiAction
     data class SetMirrorToRealNavi(val enabled: Boolean) : UiAction
+    data object StopScenario : UiAction                    // 시나리오 자동재생 중단 (지도 버튼)
+    data object AskNearby : UiAction                        // "옆에 뭐 있어?" 지도 버튼 (속도 비례 뒤돌아보기)
+    data class DeleteSaved(val id: String) : UiAction       // 저장한 곳 개별 삭제
+    data object ClearAllSaved : UiAction                    // 저장한 곳 전체 삭제
 }
 
 interface DemoEngine {

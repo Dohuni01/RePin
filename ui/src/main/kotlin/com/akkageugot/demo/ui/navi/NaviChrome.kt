@@ -168,6 +168,36 @@ fun MicButton(
     }
 }
 
+/**
+ * 알약형 지도 버튼 (아이콘 + 글자). "옆에 뭐 있어?", "시나리오 중단"처럼
+ * 말하기 버튼과 구분되는 한 번 누르는 동작에 쓴다.
+ */
+@Composable
+fun NaviPillButton(
+    text: String,
+    icon: IconKind,
+    container: Color,
+    content: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Row(
+        modifier
+            .shadow(8.dp, shape, clip = false)
+            .clip(shape)
+            .background(container)
+            .border(2.dp, Color.White.copy(alpha = 0.40f), shape)
+            .clickable(onClick = onClick)
+            .padding(start = 16.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        AkkaIcon(icon, content, Modifier.size(28.dp))
+        Text(text, color = content, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
 /** 큰 원형 아이콘 버튼 (저장 목록, 설정) */
 @Composable
 fun RoundIconButton(icon: IconKind, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 76.dp) {

@@ -23,7 +23,7 @@ enum class IconKind {
     BAKERY, CAFE, RESTAURANT, FLOWER, CONVENIENCE, ETC, PIN,
     PARKING, FUEL, PHARMACY, BANK,
     MIC, GEAR, LIST, TURN_LEFT, TURN_RIGHT, STRAIGHT, FLAG, BACK, CHECK, PHONE,
-    MAP, STAR, HOME
+    MAP, STAR, HOME, EYE, STOP, CLOSE
 }
 
 fun Category?.iconKind(): IconKind = when (this) {
@@ -200,5 +200,11 @@ fun DrawScope.drawIcon(kind: IconKind, center: Offset, sizePx: Float, color: Col
             poly(6f, 9.5f, 6f, 20f, 18f, 20f, 18f, 9.5f)
             poly(10f, 20f, 10f, 14.5f, 14f, 14.5f, 14f, 20f)
         }
+        IconKind.EYE -> {
+            poly(3f, 12f, 8f, 6.5f, 16f, 6.5f, 21f, 12f, 16f, 17.5f, 8f, 17.5f, close = true)
+            drawCircle(color, 3.2f * u, p(12f, 12f))
+        }
+        IconKind.STOP -> rrect(6f, 6f, 18f, 18f, 2.5f, fill = true)
+        IconKind.CLOSE -> { line(6f, 6f, 18f, 18f); line(18f, 6f, 6f, 18f) }
     }
 }

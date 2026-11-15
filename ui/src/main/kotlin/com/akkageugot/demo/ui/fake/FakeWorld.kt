@@ -36,7 +36,8 @@ object FakeWorld {
         return Poi(id, name, category, geo.posAt(along) + n, open)
     }
 
-    val pois: List<Poi> = listOf(
+    /** 시나리오가 참조하는 손으로 쓴 가게들 (id 고정). 지도에는 아래 buildingShops와 합쳐 그린다 */
+    private val handPois: List<Poi> = listOf(
         // 첫 직선 (0~1000m)
         poi("p01", "오후세시커피", Category.CAFE, 120.0, false, 20.0),
         poi("p02", "골목국수", Category.RESTAURANT, 200.0, true, 22.0),
@@ -62,6 +63,86 @@ object FakeWorld {
         poi("p19", "노을커피", Category.CAFE, 2740.0, false, 20.0),
         poi("p20", "종점편의점", Category.CONVENIENCE, 2880.0, true, 20.0)
     )
+
+    // ---------------------------------------------------------------- 빌딩(한 건물에 여러 샵)
+
+    /** 한 건물에 들어있는 샵 묶음. shops는 추천 순서(인기도 내림차순)로 저장한다 */
+    data class Building(val id: String, val along: Double, val side: Side, val shops: List<Poi>)
+
+    private val SHOP_NAMES: Map<Category, List<String>> = mapOf(
+        Category.BAKERY to listOf("소보로상점", "밀알베이커리", "아침빵공방", "부엉이제과", "오븐의하루"),
+        Category.CAFE to listOf("볕드는카페", "구름로스터리", "한스푼커피", "오늘의커피", "작은숲다방"),
+        Category.RESTAURANT to listOf("한상차림", "골목식당", "맛나분식", "청기와국밥", "손칼국수집"),
+        Category.CONVENIENCE to listOf("스마일마트", "밤샘편의점", "온동네마트", "스물네시간", "골목상회"),
+        Category.FLOWER to listOf("꽃내음", "사계화원", "들꽃공방", "플로라", "봄뜰꽃집")
+    )
+    private val SHOP_CATEGORIES = listOf(
+        Category.BAKERY, Category.CAFE, Category.RESTAURANT, Category.CONVENIENCE, Category.FLOWER
+    )
+
+    /** 시드 고정이라 매번 같은 배치. 경로를 따라 여러 샵이 든 건물을 만든다 */
+    val buildings: List<Building> = buildBuildings(seed = 20261115L)
+
+    private fun buildBuildings(seed: Long): List<Building> {
+        val rnd = java.util.Random(seed)
+        // 손으로 쓴 가게와 겹치지 않게 비는 구간에 건물을 둔다
+        val anchors = listOf(
+            150.0 to true, 340.0 to false, 640.0 to true, 940.0 to false,
+            1180.0 to true, 1480.0 to false, 1720.0 to true, 2060.0 to false,
+            2460.0 to true, 2760.0 to false
+        )
+        val result = ArrayList<Building>()
+        anchors.forEachIndexed { bi, (along, right) ->
+            val count = 2 + if (rnd.nextDouble() < 0.5) 1 else 0   // 2~3개
+            val cats = SHOP_CATEGORIES.shuffled(rnd).take(count)
+            val used = HashSet<String>()
+            val shops = cats.mapIndexed { si, cat ->
+                val names = SHOP_NAMES.getValue(cat).filter { it !in used }
+                val name = names[rnd.nextInt(names.size)]
+                used += name
+                val id = "b${(bi + 1).toString().padStart(2, '0')}s$si"
+                val popularity = rnd.nextDouble()
+                // 같은 건물이라 거의 같은 자리. 지도에서 덩어리로 보이게 along만 살짝 어긋나게 둔다
+                val shopAlong = along + si * 7.0
+                val open = rnd.nextDouble() > 0.15
+                Triple(poi(id, name, cat, shopAlong, right, 17.0, open = open), popularity, si)
+            }.sortedByDescending { it.second }  // 인기도 높은 순 = 추천 순서
+            result += Building("b${(bi + 1).toString().padStart(2, '0')}", along, if (right) Side.RIGHT else Side.LEFT,
+                shops.map { it.first })
+        }
+        return result
+    }
+
+    private val buildingShops: List<Poi> = buildings.flatMap { it.shops }
+
+    /** 지도에 그릴 가게 전체 = 손으로 쓴 시나리오 가게 + 건물 샵 */
+    val pois: List<Poi> = handPois + buildingShops
+
+    /** 손으로 쓴 가게도 각각 '한 칸짜리 건물'로 보고 "옆에 뭐 있어?" 후보에 넣는다 */
+    private val handBuildings: List<Building> = handPois.map { p ->
+        Building("hb_${p.id}", alongById.getValue(p.id), sideOf(p), listOf(p))
+    }
+
+    /** "옆에 뭐 있어?" 후보 = 건물 클러스터 + 손으로 쓴 가게 (경로 전체에 고르게 퍼져 있다) */
+    private val nearbyCandidates: List<Building> = buildings + handBuildings
+
+    /**
+     * 기준 거리에서 지금 옆/바로 지나온 가게(건물).
+     * 건물과 손으로 쓴 가게를 모두 후보로 보고 along이 가장 가까운 걸 고르되,
+     * 90m을 벗어나면(옆에 아무것도 없으면) null을 돌려, 한참 전이나 멀리 있는 걸
+     * 억지로 추천하지 않는다 (예전 nearestBuilding은 거리 제한이 없어 200~300m 전 건물을 추천했다).
+     */
+    fun nearbyBuilding(refAlong: Double): Building? =
+        nearbyCandidates.minByOrNull { kotlin.math.abs(it.along - refAlong) }
+            ?.takeIf { kotlin.math.abs(it.along - refAlong) <= NEARBY_MATCH_M }
+
+    /** 경로 기준 가게의 좌우 (project lateral: 왼쪽 +, 오른쪽 -) */
+    private fun sideOf(p: Poi): Side {
+        val lat = geo.project(p.pos)?.lateral ?: return Side.UNKNOWN
+        return if (lat < 0) Side.RIGHT else Side.LEFT
+    }
+
+    private const val NEARBY_MATCH_M = 90.0
 
     fun poi(id: String): Poi = pois.first { it.id == id }
     val bakery: Poi get() = poi("p04")

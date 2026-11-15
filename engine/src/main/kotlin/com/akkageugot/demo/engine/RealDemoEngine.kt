@@ -13,6 +13,7 @@ import com.akkageugot.demo.contract.MapData
 import com.akkageugot.demo.contract.Poi
 import com.akkageugot.demo.contract.SavedPlace
 import com.akkageugot.demo.contract.SavedStatus
+import com.akkageugot.demo.contract.Side
 import com.akkageugot.demo.contract.Speaker
 import com.akkageugot.demo.contract.UiAction
 import com.akkageugot.demo.contract.Vec2
@@ -62,7 +63,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
+import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * 진짜 엔진. 3단계: SimulatedDrive 틱 루프에 DialogMachine, 목업 음성, 타이머,
@@ -109,9 +113,11 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
     private var lastIntentJson = "{}"
     private var answerDeadlineMs: Long? = null
     private var revisitClearDeadlineMs: Long? = null
+    private var nearbyClearDeadlineMs: Long? = null
     private var currentWaypoint: Poi? = null
     private var revisitPoi: Poi? = null
     private var revisitPlace: SavedPlace? = null
+    private var nearbyPoi: Poi? = null // "옆에 뭐 있어?" 카드의 1순위 샵 (저장/들르기 대상)
     private var etaDelayMin = 0
     private var lastRevisitCheckMs = 0L
     private val scenarioSteps = mutableListOf<StepRuntime>()
@@ -255,6 +261,8 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             }
             is UiAction.SetGear -> drive.gear = action.gear
             is UiAction.RunScenario -> startScenario(action.n)
+            is UiAction.StopScenario -> stopScenario()
+            is UiAction.AskNearby -> askNearby()
             is UiAction.SetSdkEnabled -> {
                 settings = settings.copy(useSdk = settings.useSdk + (action.key to action.enabled))
                 persistSettings()
@@ -288,8 +296,11 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
             is UiAction.MicReleased -> speechInput.stop()
             is UiAction.TypedUtterance -> speechInput.feedUtterance(action.text)
             is UiAction.HeadsUpClicked -> {
-                if (headsUp?.kind == HeadsUpKind.REVISIT) handleRevisitClick(action.button)
-                else apply(dialog.onEvent(DialogEvent.ButtonClicked(action.button, System.currentTimeMillis())))
+                when {
+                    headsUp?.kind == HeadsUpKind.REVISIT -> handleRevisitClick(action.button)
+                    nearbyPoi != null -> handleNearbyClick(action.button)
+                    else -> apply(dialog.onEvent(DialogEvent.ButtonClicked(action.button, System.currentTimeMillis())))
+                }
             }
 
             else -> Unit
@@ -371,6 +382,14 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
                 revisitPoi = null
             }
         }
+        // "옆에 뭐 있어?" 카드도 6초 무응답이면 사라진다
+        nearbyClearDeadlineMs?.let { deadline ->
+            if (now >= deadline) {
+                nearbyClearDeadlineMs = null
+                if (nearbyPoi != null) headsUp = null
+                nearbyPoi = null
+            }
+        }
     }
 
     private fun addVoiceLine(speaker: Speaker, text: String) {
@@ -435,11 +454,107 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         lastResult = BacktrackResult.EMPTY
         revisitPoi = null
         revisitClearDeadlineMs = null
+        nearbyPoi = null
+        nearbyClearDeadlineMs = null
         scenarioSteps.clear()
         scenario.steps.forEach { scenarioSteps += StepRuntime(it) }
         runningScenario = n
         navigation.requestDestination("목적지")
         Log.i(TAG, "RunScenario $n: start=${scenario.startDistanceAlongRouteM}m, steps=${scenario.steps.size}")
+    }
+
+    /** 지도 "시나리오 중단" 버튼: 자동재생 스크립트와 카드를 비운다 (차는 그대로 둔다) */
+    private fun stopScenario() {
+        scenarioSteps.clear()
+        runningScenario = null
+        headsUp = null
+        answerDeadlineMs = null
+        nearbyPoi = null
+        nearbyClearDeadlineMs = null
+        voicePhase = VoicePhase.IDLE
+        Log.i(TAG, "StopScenario: 자동재생 중단")
+    }
+
+    /**
+     * 지도 "옆에 뭐 있어?" 버튼. 속도가 빠를수록 더 뒤의 건물을 본다
+     * (버튼을 누른 순간엔 그 가게가 이미 지나가 있으므로).
+     */
+    private fun askNearby() {
+        if (data.pois.isEmpty()) return
+        val lookback = (drive.speedMps * NEARBY_REACTION_SEC).coerceIn(0.0, 120.0)
+        val refAlong = (drive.distanceAlongM - lookback).coerceIn(0.0, drive.route.lengthM)
+
+        // 기준점에 along이 가장 가까운 가게를 중심으로 ±18m 안을 한 건물로 본다
+        val center = data.pois.minByOrNull { abs(alongOf(it) - refAlong) } ?: return
+        val centerAlong = alongOf(center)
+        val building = data.pois
+            .filter { abs(alongOf(it) - centerAlong) <= 18.0 }
+            .sortedWith(compareByDescending<Poi> { it.open }.thenBy { it.id })
+        if (building.isEmpty()) return
+
+        val top = building.first()
+        val side = sideOf(top)
+        val sideWord = CategoryLabels.korean(side)
+        val extra = if (building.size > 1) " · 같은 건물 ${building.size - 1}곳 더" else ""
+        nearbyPoi = top
+        revisitPoi = null
+        headsUp = HeadsUp(
+            id = "hu-${idSeq++}",
+            kind = HeadsUpKind.ANSWER,
+            title = top.name,
+            subtitle = listOf(CategoryLabels.korean(top.category), sideWord, "옆 건물").joinToString(" · ") + extra,
+            category = top.category,
+            buttons = listOf(HeadsUpButton.SAVE, HeadsUpButton.VISIT)
+        )
+        nearbyClearDeadlineMs = System.currentTimeMillis() + ANSWER_TIMEOUT_MS
+        lastIntentJson = """{"type":"NEARBY","category":null,"side":"$side","timeOffsetSec":0}"""
+        val line = if (building.size > 1)
+            "$sideWord 건물에 ${top.name}가 있어요. 같은 건물에 ${building[1].name}도 있어요."
+        else
+            "$sideWord 에 ${top.name}가 있어요."
+        speechOutput.speak(line)
+        addVoiceLine(Speaker.APP, line)
+        Log.i(TAG, "AskNearby: ${top.name} (건물 ${building.size}곳, ref=${refAlong.toInt()}m)")
+    }
+
+    private fun handleNearbyClick(button: HeadsUpButton) {
+        val poi = nearbyPoi
+        if (poi != null && button == HeadsUpButton.SAVE) {
+            val now = System.currentTimeMillis()
+            upsertSaved(
+                SavedPlace(
+                    id = "sp-${idSeq++}",
+                    createdAtMs = now,
+                    label = EngineClock.savedLabel(now),
+                    pos = poi.pos,
+                    utterance = "옆에 뭐 있어?",
+                    candidates = emptyList(),
+                    selectedPoiId = poi.id,
+                    status = SavedStatus.CONFIRMED,
+                    memo = ""
+                )
+            )
+            val line = "${poi.name} 저장했어요."
+            speechOutput.speak(line)
+            addVoiceLine(Speaker.APP, line)
+        } else if (poi != null && button == HeadsUpButton.VISIT) {
+            addWaypoint(poi)
+        }
+        headsUp = null
+        nearbyPoi = null
+        nearbyClearDeadlineMs = null
+    }
+
+    /** 가게의 경로상 거리(along) */
+    private fun alongOf(poi: Poi): Double = data.route.project(poi.pos).distanceAlongM
+
+    /** 가게가 진행 방향 기준 왼쪽/오른쪽 어디인지 */
+    private fun sideOf(poi: Poi): Side {
+        val along = alongOf(poi)
+        val road = data.route.pointAt(along)
+        val h = data.route.headingAt(along)
+        val dot = (poi.pos.x - road.x) * sin(h) + (poi.pos.y - road.y) * -cos(h)
+        return if (dot >= 0) Side.RIGHT else Side.LEFT
     }
 
     /** 시나리오 자동 발화: 트리거 지점을 지나면 delaySec(sim) 뒤 프리셋 발화를 넣는다 */
@@ -577,6 +692,7 @@ open class RealDemoEngine(private val context: Context) : DemoEngine {
         const val TICK_MS = 100L
         const val TRAIL_INTERVAL_MS = 1000L
         const val ANSWER_TIMEOUT_MS = 6000L
+        const val NEARBY_REACTION_SEC = 1.8
         const val VOICE_LINE_MS = 4000L
         const val MAX_VOICE_LINES = 2
     }

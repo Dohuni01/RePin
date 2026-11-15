@@ -80,12 +80,25 @@ fun ParkedPanel(
                 AkkaIcon(IconKind.BACK, c.text, Modifier.size(30.dp))
             }
             Spacer(Modifier.width(14.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text("저장한 곳", color = c.onSky, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
                     "오늘 ${today.size}곳 · 후보를 눌러 맞는 가게를 골라 주세요",
                     color = c.onSky.copy(alpha = 0.85f), fontSize = 18.sp
                 )
+            }
+            if (today.isNotEmpty()) {
+                Box(
+                    Modifier
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(c.surface.copy(alpha = 0.86f))
+                        .clickable { dispatch(UiAction.ClearAllSaved) }
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("전체 삭제", color = c.warn, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
         if (today.isEmpty()) {
@@ -139,6 +152,14 @@ private fun SavedItem(place: SavedPlace, dispatch: (UiAction) -> Unit, onShowQr:
                 )
             }
             StatusBadge(place.status)
+            Spacer(Modifier.width(10.dp))
+            Box(
+                Modifier.size(40.dp).clip(CircleShape).background(c.surfaceHigh)
+                    .clickable { dispatch(UiAction.DeleteSaved(place.id)) },
+                contentAlignment = Alignment.Center
+            ) {
+                AkkaIcon(IconKind.CLOSE, c.textDim, Modifier.size(22.dp))
+            }
         }
         if (place.utterance.isNotBlank()) {
             Text(

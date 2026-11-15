@@ -77,7 +77,17 @@
     { "id": "p42", "name": "달개비꽃집", "category": "FLOWER", "distanceAlongRouteM": 2770, "side": "left", "offsetM": 17, "open": true },
     { "id": "p43", "name": "종점다방", "category": "CAFE", "distanceAlongRouteM": 2840, "side": "right", "offsetM": 15, "open": true },
     { "id": "p44", "name": "마중상회", "category": "CONVENIENCE", "distanceAlongRouteM": 2900, "side": "right", "offsetM": 14, "open": true },
-    { "id": "p45", "name": "끝길제과", "category": "BAKERY", "distanceAlongRouteM": 2960, "side": "left", "offsetM": 15, "open": true }
+    { "id": "p45", "name": "끝길제과", "category": "BAKERY", "distanceAlongRouteM": 2960, "side": "left", "offsetM": 15, "open": true },
+
+    { "id": "b01s0", "name": "볕드는카페", "category": "CAFE", "distanceAlongRouteM": 480, "side": "right", "offsetM": 15, "open": true },
+    { "id": "b01s1", "name": "스마일마트", "category": "CONVENIENCE", "distanceAlongRouteM": 486, "side": "right", "offsetM": 19, "open": true },
+
+    { "id": "b02s0", "name": "한상차림", "category": "RESTAURANT", "distanceAlongRouteM": 1240, "side": "left", "offsetM": 16, "open": true },
+    { "id": "b02s1", "name": "구름로스터리", "category": "CAFE", "distanceAlongRouteM": 1246, "side": "left", "offsetM": 20, "open": true },
+    { "id": "b02s2", "name": "밀알베이커리", "category": "BAKERY", "distanceAlongRouteM": 1252, "side": "left", "offsetM": 24, "open": false },
+
+    { "id": "b03s0", "name": "밤샘편의점", "category": "CONVENIENCE", "distanceAlongRouteM": 2000, "side": "right", "offsetM": 14, "open": true },
+    { "id": "b03s1", "name": "사계화원", "category": "FLOWER", "distanceAlongRouteM": 2006, "side": "right", "offsetM": 18, "open": true }
   ],
   "scenarios": [
     { "n": 1, "startDistanceAlongRouteM": 250, "timeScale": 2,

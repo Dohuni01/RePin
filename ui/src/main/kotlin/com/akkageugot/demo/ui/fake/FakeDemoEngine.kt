@@ -16,6 +16,7 @@ import com.akkageugot.demo.contract.MapData
 import com.akkageugot.demo.contract.Poi
 import com.akkageugot.demo.contract.SavedPlace
 import com.akkageugot.demo.contract.SavedStatus
+import com.akkageugot.demo.contract.ScoreDetail
 import com.akkageugot.demo.contract.Side
 import com.akkageugot.demo.contract.Speaker
 import com.akkageugot.demo.contract.TurnPoint
@@ -69,7 +70,7 @@ class FakeDemoEngine(@Suppress("UNUSED_PARAMETER") context: Context) : DemoEngin
     private var waypointAlong = Double.MAX_VALUE
     private var d = 0.0
     private var speedKmh = 0.0
-    private var gear = Gear.D
+    private var gear = Gear.P // 첫 실행은 정차 홈(RePin)으로 시작한다. 주행은 시나리오/안내 시작으로 들어간다
     private var etaDelayMin = 0
 
     // 대화
@@ -207,6 +208,7 @@ class FakeDemoEngine(@Suppress("UNUSED_PARAMETER") context: Context) : DemoEngin
                     resetDrive(0.0)
                     addWaypoint(poi)
                 }
+                gear = Gear.D // 정차 홈에서 눌러도 바로 주행이 시작되도록 (첫 실행은 P로 시작하므로)
                 addLine(Speaker.APP, "안내를 시작할게요. 출발하면 들렀다 가요.")
             }
             is UiAction.SetTargetSpeed -> settings = settings.copy(targetSpeedKmh = action.kmh.coerceIn(0, 80))
@@ -215,6 +217,10 @@ class FakeDemoEngine(@Suppress("UNUSED_PARAMETER") context: Context) : DemoEngin
             is UiAction.RunScenario -> runScenario(action.n)
             is UiAction.SetSdkEnabled -> settings = settings.copy(useSdk = settings.useSdk + (action.key to action.enabled))
             is UiAction.SetMirrorToRealNavi -> settings = settings.copy(mirrorToRealNavi = action.enabled)
+            UiAction.StopScenario -> stopScenario()
+            UiAction.AskNearby -> askNearby()
+            is UiAction.DeleteSaved -> saved = saved.filter { it.id != action.id }
+            UiAction.ClearAllSaved -> saved = emptyList()
         }
     }
 
@@ -590,6 +596,82 @@ class FakeDemoEngine(@Suppress("UNUSED_PARAMETER") context: Context) : DemoEngin
     private fun endScenario() {
         runningScenario = null
         answerKind = AnswerKind.BAKERY
+    }
+
+    /** 지도 "시나리오 중단" 버튼: 자동재생 스크립트와 대화 상태를 비우고 차를 세운다(정차 → 설정 시나리오 화면으로 복귀) */
+    private fun stopScenario() {
+        cancel(TAG_SCRIPT)
+        cancel(TAG_FLOW)
+        cancel(TAG_PHASE)
+        runningScenario = null
+        answerKind = AnswerKind.BAKERY
+        voicePhase = VoicePhase.IDLE
+        voiceLines = emptyList()
+        typedText = null
+        clearHeadsUp()
+        gear = Gear.P // 정차로 돌려 정차 홈(설정 시나리오 화면)으로 나간다
+        speedKmh = 0.0
+    }
+
+    // ---------------------------------------------------------------- "옆에 뭐 있어?"
+
+    /**
+     * 지도 "옆에 뭐 있어?" 버튼. 속도가 빠를수록 더 뒤의 건물을 본다
+     * (버튼을 누른 순간엔 그 가게가 이미 지나가 있으므로).
+     */
+    private fun askNearby() {
+        // "제일 가까운 곳"을 준다: 지금 차 위치(d) 기준으로 가장 가까운 가게.
+        // 뒤로 물러난 기준점(d-lookback)을 쓰면 바로 옆 대신 더 뒤의 가게가 뽑히므로 d를 그대로 쓴다.
+        val refAlong = d.coerceIn(0.0, geo.length)
+        val b = FakeWorld.nearbyBuilding(refAlong)
+        val ranked = b?.shops.orEmpty() // 이미 인기도 내림차순
+        if (b == null || ranked.isEmpty()) {
+            speak("지금은 옆에 안내할 만한 가게가 없어요.")
+            return
+        }
+
+        val sideScore = 1.0
+        val cands = ranked.mapIndexed { i, shop ->
+            val score = (0.9 - i * 0.18).coerceAtLeast(0.2)
+            Candidate(shop, score, b.side, 18.0 + i * 2.0, ScoreDetail(0.9, sideScore, 1.0 - i * 0.2, 0.7))
+        }
+        debugCandidates = cands
+        t0D = refAlong
+        t0Pos = geo.posAt(refAlong)
+        corridor = geo.slice(refAlong - 30.0, refAlong + 10.0)
+        pending = Pending(cands, 0, "옆에 뭐 있어?", geo.posAt(refAlong))
+        lastIntentJson = """{"type":"NEARBY","category":null,"side":"${b.side}","timeOffsetSec":0}"""
+
+        showNearbyCard(b, ranked)
+        val sideText = sideText(b.side)
+        val line = if (ranked.size > 1)
+            "$sideText 건물에 ${ranked[0].name}가 있어요. 같은 건물에 ${ranked[1].name}도 있어요."
+        else
+            "$sideText 에 ${ranked[0].name}가 있어요."
+        speak(line)
+    }
+
+    private fun showNearbyCard(b: FakeWorld.Building, ranked: List<Poi>) {
+        val top = ranked.first()
+        revisitPoi = null
+        locationPoi = null
+        val extra = if (ranked.size > 1) " · 같은 건물 ${ranked.size - 1}곳 더" else ""
+        setHeadsUp(
+            HeadsUp(
+                id = "h${++seq}",
+                kind = HeadsUpKind.ANSWER,
+                title = top.name,
+                subtitle = "${top.category.labelKo()} · ${sideText(b.side)} · 옆 건물$extra",
+                category = top.category,
+                buttons = listOf(HeadsUpButton.SAVE, HeadsUpButton.VISIT)
+            )
+        )
+    }
+
+    private fun sideText(side: Side): String = when (side) {
+        Side.LEFT -> "왼쪽"
+        Side.RIGHT -> "오른쪽"
+        Side.UNKNOWN -> "근처"
     }
 
     // ---------------------------------------------------------------- 예약
