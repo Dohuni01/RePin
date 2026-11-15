@@ -93,4 +93,12 @@ class SimulatedDriveTest {
         assertEquals(com.akkageugot.demo.contract.TurnDirection.RIGHT, d.nextTurn?.direction)
         assertEquals(200.0, d.distanceToNextTurnM!!, 1.0)
     }
+
+    @Test
+    fun `달리던 속도 그대로 출발할 수 있다`() {
+        val d = newDrive().apply { startAt(500.0, Gear.D, initialSpeedMps = 10.0) }
+        assertEquals(10.0, d.speedMps, 1e-9)
+        val p = newDrive().apply { startAt(500.0, Gear.P, initialSpeedMps = 10.0) }
+        assertEquals(0.0, p.speedMps, 1e-9)
+    }
 }

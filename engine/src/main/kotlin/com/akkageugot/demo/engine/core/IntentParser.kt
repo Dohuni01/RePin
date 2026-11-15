@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-enum class IntentType { ASK, SAVE, VISIT, REJECT, MEMO }
+enum class IntentType { ASK, NEARBY, SAVE, VISIT, REJECT, MEMO }
 
 @Serializable
 data class ParsedIntent(
@@ -37,21 +37,21 @@ object IntentParser {
         val hasSave = t.contains("저장")
         val hasVisit = listOf("들르", "들렀다", "가자", "거기로").any { t.contains(it) }
         val hasReject = listOf("아니", "그 옆", "다른 거").any { t.contains(it) }
+        // "옆에 뭐 있어?", "오른쪽에 뭐있어" → 주변 가게 묻기
+        val compact = t.replace(" ", "")
+        val hasNearby = listOf("뭐있어", "뭐가있어", "뭐있지", "뭐있나").any { compact.contains(it) }
 
         val type = when {
             hasReject -> IntentType.REJECT
             hasVisit -> IntentType.VISIT
             hasSave -> IntentType.SAVE
             hasAsk -> IntentType.ASK
+            hasNearby -> IntentType.NEARBY
             else -> IntentType.MEMO
         }
 
         val category = parseCategory(t)
-        val side = when {
-            t.contains("오른쪽") -> Side.RIGHT
-            t.contains("왼쪽") -> Side.LEFT
-            else -> Side.UNKNOWN
-        }
+        val side = parseSide(t)
 
         val minutes = minutesAgoRegex.find(t)?.groupValues?.get(1)?.toIntOrNull()
         val vaguePast = minutes == null && t.contains("아까")
@@ -65,6 +65,13 @@ object IntentParser {
             askAndSave = hasAsk && hasSave || (hasSave && category != null),
             rawText = t
         )
+    }
+
+    /** "오른쪽/우측/오른편", "왼쪽/좌측/왼편". 좌우 되묻기의 대답도 이걸로 읽는다 */
+    fun parseSide(t: String): Side = when {
+        listOf("오른쪽", "우측", "오른편").any { t.contains(it) } -> Side.RIGHT
+        listOf("왼쪽", "좌측", "왼편").any { t.contains(it) } -> Side.LEFT
+        else -> Side.UNKNOWN
     }
 
     fun toJson(intent: ParsedIntent): String = json.encodeToString(intent)

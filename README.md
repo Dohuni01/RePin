@@ -22,7 +22,7 @@ docs/       작업 방법, 계약 설명, SDK 메모, 합치기 지시
 2. Build Variant 선택
    - `fakeDebug`: 가짜 엔진. 화면 개발용
    - `realDebug`: 실제 엔진
-3. 발표: `scripts\scenario1.bat` ~ `scripts\scenario5.bat`
+3. 발표: `scripts\scenario1.bat` ~ `scripts\scenario6.bat`
 
 ## 작업 방법
 

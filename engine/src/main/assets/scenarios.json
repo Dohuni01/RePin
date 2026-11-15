@@ -30,7 +30,17 @@
     { "lat": 37.53680543, "lon": 127.07755054 },
     { "lat": 37.53680543, "lon": 127.07868478 },
     { "lat": 37.53680543, "lon": 127.07981901 },
-    { "lat": 37.53680543, "lon": 127.08095325 }
+    { "lat": 37.53680543, "lon": 127.08095325 },
+    { "lat": 37.53680543, "lon": 127.08208749 },
+    { "lat": 37.53680543, "lon": 127.08322173 },
+    { "lat": 37.53680543, "lon": 127.08435597 },
+    { "lat": 37.53680543, "lon": 127.08549021 },
+    { "lat": 37.53680543, "lon": 127.08662445 },
+    { "lat": 37.53680543, "lon": 127.08775869 },
+    { "lat": 37.53680543, "lon": 127.08889293 },
+    { "lat": 37.53680543, "lon": 127.09002717 },
+    { "lat": 37.53680543, "lon": 127.09116141 },
+    { "lat": 37.53680543, "lon": 127.09229565 }
   ],
   "pois": [
     { "id": "p01", "name": "햇살편의점", "category": "CONVENIENCE", "distanceAlongRouteM": 60, "side": "right", "offsetM": 13, "open": true },
@@ -79,29 +89,34 @@
     { "id": "p44", "name": "마중상회", "category": "CONVENIENCE", "distanceAlongRouteM": 2900, "side": "right", "offsetM": 14, "open": true },
     { "id": "p45", "name": "끝길제과", "category": "BAKERY", "distanceAlongRouteM": 2960, "side": "left", "offsetM": 15, "open": true },
 
-    { "id": "b01s0", "name": "볕드는카페", "category": "CAFE", "distanceAlongRouteM": 480, "side": "right", "offsetM": 15, "open": true },
-    { "id": "b01s1", "name": "스마일마트", "category": "CONVENIENCE", "distanceAlongRouteM": 486, "side": "right", "offsetM": 19, "open": true },
+    { "id": "b01s0", "name": "볕드는카페", "category": "CAFE", "distanceAlongRouteM": 480, "side": "right", "offsetM": 15, "open": true, "building": "볕들빌딩" },
+    { "id": "b01s1", "name": "스마일마트", "category": "CONVENIENCE", "distanceAlongRouteM": 486, "side": "right", "offsetM": 19, "open": true, "building": "볕들빌딩" },
 
-    { "id": "b02s0", "name": "한상차림", "category": "RESTAURANT", "distanceAlongRouteM": 1240, "side": "left", "offsetM": 16, "open": true },
-    { "id": "b02s1", "name": "구름로스터리", "category": "CAFE", "distanceAlongRouteM": 1246, "side": "left", "offsetM": 20, "open": true },
-    { "id": "b02s2", "name": "밀알베이커리", "category": "BAKERY", "distanceAlongRouteM": 1252, "side": "left", "offsetM": 24, "open": false },
+    { "id": "b02s0", "name": "한상차림", "category": "RESTAURANT", "distanceAlongRouteM": 1240, "side": "left", "offsetM": 16, "open": true, "building": "구름스퀘어" },
+    { "id": "b02s1", "name": "구름로스터리", "category": "CAFE", "distanceAlongRouteM": 1246, "side": "left", "offsetM": 20, "open": true, "building": "구름스퀘어" },
+    { "id": "b02s2", "name": "밀알베이커리", "category": "BAKERY", "distanceAlongRouteM": 1252, "side": "left", "offsetM": 24, "open": false, "building": "구름스퀘어" },
 
-    { "id": "b03s0", "name": "밤샘편의점", "category": "CONVENIENCE", "distanceAlongRouteM": 2000, "side": "right", "offsetM": 14, "open": true },
-    { "id": "b03s1", "name": "사계화원", "category": "FLOWER", "distanceAlongRouteM": 2006, "side": "right", "offsetM": 18, "open": true }
+    { "id": "b03s0", "name": "밤샘편의점", "category": "CONVENIENCE", "distanceAlongRouteM": 2000, "side": "right", "offsetM": 14, "open": true, "building": "샛별타워" },
+    { "id": "b03s1", "name": "사계화원", "category": "FLOWER", "distanceAlongRouteM": 2006, "side": "right", "offsetM": 18, "open": true, "building": "샛별타워" }
   ],
   "scenarios": [
-    { "n": 1, "startDistanceAlongRouteM": 250, "timeScale": 2,
+    { "n": 1, "startDistanceAlongRouteM": 365, "prefillFromM": 250, "timeScale": 2,
       "steps": [ { "triggerDistanceAlongRouteM": 400, "delaySec": 3, "preset": 1 },
                  { "triggerDistanceAlongRouteM": 400, "delaySec": 8, "preset": 2 } ] },
-    { "n": 2, "startDistanceAlongRouteM": 60, "timeScale": 3,
+    { "n": 2, "startDistanceAlongRouteM": 2700, "prefillFromM": 60, "timeScale": 3,
       "steps": [ { "triggerDistanceAlongRouteM": 2750, "delaySec": 3, "preset": 5 },
                  { "triggerDistanceAlongRouteM": 2750, "delaySec": 9, "preset": 4 },
                  { "triggerDistanceAlongRouteM": 2750, "delaySec": 15, "preset": 3 } ] },
-    { "n": 3, "startDistanceAlongRouteM": 2300, "timeScale": 2,
+    { "n": 3, "startDistanceAlongRouteM": 465, "prefillFromM": 300, "timeScale": 2,
+      "steps": [ { "triggerDistanceAlongRouteM": 500, "delaySec": 1, "preset": 7, "askSide": true },
+                 { "triggerDistanceAlongRouteM": 500, "delaySec": 5, "preset": 8 },
+                 { "triggerDistanceAlongRouteM": 500, "delaySec": 12, "preset": 2 } ] },
+    { "n": 4, "startDistanceAlongRouteM": 1220, "prefillFromM": 1100, "timeScale": 2,
+      "steps": [ { "triggerDistanceAlongRouteM": 1255, "delaySec": 1, "preset": 9, "askSide": true },
+                 { "triggerDistanceAlongRouteM": 1255, "delaySec": 5, "preset": 10 },
+                 { "triggerDistanceAlongRouteM": 1255, "delaySec": 16, "preset": 11 } ] },
+    { "n": 5, "startDistanceAlongRouteM": 2465, "prefillFromM": 2300, "timeScale": 2,
       "steps": [ { "triggerDistanceAlongRouteM": 2500, "delaySec": 3, "preset": 6 } ] },
-    { "n": 4, "startDistanceAlongRouteM": 250, "timeScale": 2, "steps": [] },
-    { "n": 5, "startDistanceAlongRouteM": 250, "timeScale": 2,
-      "steps": [ { "triggerDistanceAlongRouteM": 400, "delaySec": 3, "preset": 1 },
-                 { "triggerDistanceAlongRouteM": 400, "delaySec": 8, "preset": 3 } ] }
+    { "n": 6, "startDistanceAlongRouteM": 250, "timeScale": 2, "steps": [] }
   ]
 }

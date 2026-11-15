@@ -48,11 +48,11 @@ class SimulatedDrive(initialRoute: List<Vec2>) {
         distanceAlongM = route.project(here).distanceAlongM
     }
 
-    /** startM 지점에서 D단으로 출발 */
-    fun startAt(startM: Double, gear: Gear = Gear.D) {
+    /** startM 지점에서 출발. initialSpeedMps로 달리던 속도 그대로 이어 갈 수 있다 (P면 0) */
+    fun startAt(startM: Double, gear: Gear = Gear.D, initialSpeedMps: Double = 0.0) {
         distanceAlongM = startM.coerceIn(0.0, route.lengthM)
         this.gear = gear
-        speedMps = 0.0
+        speedMps = if (gear == Gear.P) 0.0 else initialSpeedMps.coerceAtLeast(0.0)
     }
 
     /** dtMs(실제 경과). timeScale만큼 가상 시간이 더 흐른다 */

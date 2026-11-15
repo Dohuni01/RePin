@@ -24,7 +24,9 @@ data class PoiJson(
     val distanceAlongRouteM: Double,
     val side: String, // "right" | "left"
     val offsetM: Double,
-    val open: Boolean = true
+    val open: Boolean = true,
+    /** 여러 가게가 든 건물 이름. 같은 이름끼리 한 건물로 묶는다 */
+    val building: String? = null
 )
 
 @Serializable
@@ -34,7 +36,9 @@ data class ScenarioStepJson(
     /** delaySec 뒤에 */
     val delaySec: Double,
     /** 이 프리셋 발화를 자동 입력한다 (engine/PROMPT.md 8절 번호) */
-    val preset: Int
+    val preset: Int,
+    /** true면 이 자동 발화는 좌우를 되묻는다 */
+    val askSide: Boolean = false
 )
 
 @Serializable
@@ -43,6 +47,8 @@ data class ScenarioJson(
     val startDistanceAlongRouteM: Double,
     /** 발표용 배속. 긴 구간을 지나 "3분 전"을 되짚는 시나리오는 더 빠르게 재생한다 */
     val timeScale: Int = 1,
+    /** 이 지점부터 출발 지점까지 달린 기록을 시작 때 미리 채운다. "N분 전" 질문이나 지나온 가게를 바로 보여 주는 시나리오용 */
+    val prefillFromM: Double? = null,
     val steps: List<ScenarioStepJson> = emptyList()
 )
 
@@ -58,8 +64,16 @@ data class ScenarioData(
     val routeLatLon: List<LatLon>,
     val route: Polyline,
     val pois: List<Poi>,
-    val scenarios: List<ScenarioJson>
-)
+    val scenarios: List<ScenarioJson>,
+    /** 가게 id → 건물 이름 (건물에 든 가게만) */
+    val buildingByPoiId: Map<String, String> = emptyMap()
+) {
+    fun buildingOf(poi: Poi): com.akkageugot.demo.engine.core.Building? {
+        val name = buildingByPoiId[poi.id] ?: return null
+        val members = pois.filter { buildingByPoiId[it.id] == name }
+        return com.akkageugot.demo.engine.core.Building(name, members)
+    }
+}
 
 /**
  * engine/src/main/assets/scenarios.json 파서. 파일 읽기는 호출자(엔진) 책임이라
@@ -97,6 +111,7 @@ object ScenarioLoader {
             )
         }
 
-        return ScenarioData(latLons, route, pois, file.scenarios)
+        val buildings = file.pois.mapNotNull { p -> p.building?.takeIf { it.isNotBlank() }?.let { p.id to it } }.toMap()
+        return ScenarioData(latLons, route, pois, file.scenarios, buildings)
     }
 }
