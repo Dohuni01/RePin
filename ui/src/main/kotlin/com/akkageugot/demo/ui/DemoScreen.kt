@@ -208,19 +208,11 @@ fun NaviPane(
                     onClick = { dispatch(UiAction.StopScenario) }
                 )
             }
-            // 지도에서 언제든 "옆에 뭐 있어?"로 지금 옆/지나온 건물을 추천받는다
-            NaviPillButton(
-                text = "옆에 뭐 있어?",
-                icon = IconKind.EYE,
-                container = c.accent2,
-                content = androidx.compose.ui.graphics.Color.White,
-                onClick = { dispatch(UiAction.AskNearby) }
-            )
-            // 좌우 대답 버튼: 말로 대답한 것과 같은 경로로 보낸다. 되묻는 중이 아니면 그쪽 건물을 바로 알려 준다
+            // 좌우 직접 묻기 버튼: 차 진행 방향 기준 왼쪽/오른쪽 건물을 바로 알려 준다
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("왼쪽", "오른쪽").forEach { side ->
+                listOf("왼쪽에 뭐 있어?" to "왼쪽", "오른쪽에 뭐 있어?" to "오른쪽").forEach { (label, side) ->
                     NaviTextPillButton(
-                        text = side,
+                        text = label,
                         container = c.accent2.copy(alpha = 0.85f),
                         content = androidx.compose.ui.graphics.Color.White,
                         onClick = {
