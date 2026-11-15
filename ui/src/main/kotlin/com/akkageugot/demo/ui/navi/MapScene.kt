@@ -40,25 +40,31 @@ data class MapPalette(
     val accent: Long,
     val debugWarn: Long,
     val debugDanger: Long,
-    val debugText: Long
+    val debugText: Long,
+    /** 지평선 쪽 안개 색 (노을빛). 지도 위쪽을 이 색으로 덮는다 */
+    val horizon: Long = ground
 )
 
+/** 노을(주간): 연보라 땅, 흰 길, 보라 경로, 복숭아색 지평선 */
 val DayMapPalette = MapPalette(
-    ground = 0xFFE9EDF3, building = 0xFFE0E5ED, building2 = 0xFFD9DFE9, buildingSide = 0xFFC5CCD8,
-    road = 0xFFFFFFFF, roadMajor = 0xFFFFFFFF, roadEdge = 0xFFCDD4DF,
-    park = 0xFFD2E9CE, water = 0xFFC6DDF4,
-    route = 0xFF2F6FED, routeEdge = 0xFF1B4FC4, routePassed = 0xFFB4BDCB,
-    label = 0xFF3A4559, labelHalo = 0xFFFFFFFF, accent = 0xFF2F6FED,
-    debugWarn = 0xFFB36A00, debugDanger = 0xFFC62828, debugText = 0xFF10151C
+    ground = 0xFFF1E5EE, building = 0xFFFBF5F8, building2 = 0xFFF6ECF3, buildingSide = 0xFFE0CFE1,
+    road = 0xFFFFFFFF, roadMajor = 0xFFFFFFFF, roadEdge = 0xFFE3D5E4,
+    park = 0xFFDCEBD9, water = 0xFFD3DCF3,
+    route = 0xFF7A5FA8, routeEdge = 0xFF5B4593, routePassed = 0xFFD5C2DA,
+    label = 0xFF3A2E5E, labelHalo = 0xFFFFFFFF, accent = 0xFFFF6F61,
+    debugWarn = 0xFFB45309, debugDanger = 0xFFD92D20, debugText = 0xFF1E2140,
+    horizon = 0xFFFFD6C2
 )
 
+/** 밤: 남보라 땅, 연보라 경로, 자줏빛 지평선 */
 val NightMapPalette = MapPalette(
-    ground = 0xFF0F1828, building = 0xFF18243A, building2 = 0xFF1C2A43, buildingSide = 0xFF0B1220,
-    road = 0xFF24334D, roadMajor = 0xFF2F4263, roadEdge = 0xFF0B1220,
-    park = 0xFF12302A, water = 0xFF0F2742,
-    route = 0xFF3D8BFF, routeEdge = 0xFFA9CBFF, routePassed = 0xFF44526B,
-    label = 0xFFC9D4E5, labelHalo = 0xFF0C1422, accent = 0xFF3D8BFF,
-    debugWarn = 0xFFFFB84D, debugDanger = 0xFFFF6B6B, debugText = 0xFFF4F7FB
+    ground = 0xFF17152B, building = 0xFF221F3D, building2 = 0xFF272347, buildingSide = 0xFF100E20,
+    road = 0xFF2B2748, roadMajor = 0xFF35305A, roadEdge = 0xFF100E20,
+    park = 0xFF1A2B2A, water = 0xFF172240,
+    route = 0xFFB49BFF, routeEdge = 0xFFE3D8FF, routePassed = 0xFF4A4466,
+    label = 0xFFE6DEF5, labelHalo = 0xFF120F22, accent = 0xFFFF7A6B,
+    debugWarn = 0xFFFFB84D, debugDanger = 0xFFFF6B6B, debugText = 0xFFF4F0FB,
+    horizon = 0xFF3A2347
 )
 
 /** 지도 위 아이콘 종류. 가게(Category) + 장식용(주차장, 주유소, 약국, ATM) */
@@ -484,7 +490,7 @@ fun buildMapScene(
         }
     }
 
-    out.add(MapPrim.Fog(h * 0.07f, h * 0.30f, pal.ground))
+    out.add(MapPrim.Fog(h * 0.07f, h * 0.30f, pal.horizon))
 
     // 가게: 먼 것부터. 실제 가게(엔진 데이터) + 장식 가게
     class PoiDraw(val f: Double, val pos: Vec2, val icon: MapIcon, val name: String, val real: Boolean, val hl: Boolean)

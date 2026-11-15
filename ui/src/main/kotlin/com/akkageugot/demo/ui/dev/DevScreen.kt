@@ -44,7 +44,7 @@ import kotlin.math.roundToInt
 data class UiFlags(
     val presenter: Boolean = false,
     val debugOverlay: Boolean = false,
-    val dayTheme: Boolean = false
+    val dayTheme: Boolean = true
 )
 
 class UiPrefs(context: Context) {
@@ -54,7 +54,7 @@ class UiPrefs(context: Context) {
         UiFlags(
             presenter = sp.getBoolean("presenter", false),
             debugOverlay = sp.getBoolean("debugOverlay", false),
-            dayTheme = sp.getBoolean("dayTheme", false)
+            dayTheme = sp.getBoolean("dayTheme", true)
         )
     )
         private set
@@ -157,7 +157,7 @@ fun DevScreen(
         Section("화면")
         ToggleRow("발표자 모드", null, flags.presenter) { onFlags(flags.copy(presenter = it)) }
         ToggleRow("디버그 오버레이 (발표자 모드에서만)", null, flags.debugOverlay) { onFlags(flags.copy(debugOverlay = it)) }
-        ToggleRow("주간 테마", null, flags.dayTheme) { onFlags(flags.copy(dayTheme = it)) }
+        ToggleRow("노을 테마 (끄면 밤)", null, flags.dayTheme) { onFlags(flags.copy(dayTheme = it)) }
         Spacer(Modifier.height(24.dp))
     }
 }
